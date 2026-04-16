@@ -306,7 +306,7 @@ Use **Reassign to…** on each affected entry in the Manager panel.
 ## File Structure
 
 ```
-Extension-Dragon-Memories-Manager/
+Dragon-Memories-Manager/
 ├── manifest.json          Extension metadata
 ├── index.js               Entry point: settings panel, event hooks, wand menu
 ├── ui.js                  MM in-chat creation flow + Manager panel
