@@ -1,0 +1,210 @@
+#dragon_memory_manager_settings .opacity50p {
+    opacity: 0.6;
+    font-size: 0.85em;
+}
+
+#dragon_memory_manager_settings .sysHR {
+    margin: 8px 0;
+}
+
+#dragon_memory_manager_settings textarea.textarea_compact {
+    resize: vertical;
+    min-height: 60px;
+}
+
+/* ── Settings panel avatar preview ──────────────────────────────────────── */
+.dmm-settings-avatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 6px;
+    object-fit: cover;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(128,128,128,0.4));
+    flex-shrink: 0;
+}
+
+#dragon_memory_manager_settings code {
+    font-family: monospace;
+    font-size: 0.88em;
+    background: rgba(128,128,128,0.15);
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+
+/* Wand menu buttons */
+#dmm_wand_create,
+#dmm_wand_manager {
+    cursor: pointer;
+}
+
+/* ── Ghost messages (hidden after save) ─────────────────────────────────── */
+#chat .mes.dmm-ghost {
+    display: none;
+}
+
+/* ── Character selector (Step 2) ────────────────────────────────────────── */
+.dmm-char-selector {
+    margin-top: 8px;
+}
+
+.dmm-char-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    min-width: 70px;
+}
+
+.dmm-char-btn.dmm-selected {
+    outline: 2px solid var(--SmartThemeQuoteColor, #88aaff);
+}
+
+.dmm-char-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+/* ── Range selector (Step 3) ─────────────────────────────────────────────── */
+.dmm-range-selector {
+    margin-top: 8px;
+}
+
+.dmm-range-input {
+    max-width: 110px;
+}
+
+/* ── Marker mode (Step 3b) ───────────────────────────────────────────────── */
+.dmm-marker-target {
+    cursor: crosshair !important;
+}
+
+.dmm-marker-target:hover {
+    outline: 1px dashed var(--SmartThemeQuoteColor, #88aaff);
+}
+
+#chat .mes.dmm-marker-start {
+    outline: 2px solid #66cc66;
+    outline-offset: 2px;
+}
+
+#chat .mes.dmm-marker-end {
+    outline: 2px solid #cc6666;
+    outline-offset: 2px;
+}
+
+/* ── Generation / review (Steps 4-5) ────────────────────────────────────── */
+.dmm-spinner,
+.dmm-regen-spinner {
+    color: var(--SmartThemeQuoteColor, #88aaff);
+    font-style: italic;
+}
+
+.dmm-spinner {
+    margin-top: 6px;
+}
+
+.dmm-regen-spinner {
+    margin-left: 6px;
+}
+
+.dmm-review-controls {
+    margin-top: 8px;
+    padding: 8px;
+    border-top: 1px solid var(--SmartThemeBorderColor, rgba(128,128,128,0.3));
+}
+
+.dmm-review-meta {
+    font-size: 0.85em;
+}
+
+.mt5 {
+    margin-top: 5px;
+}
+
+/* ── Memory Manager panel (Step 9) ──────────────────────────────────────── */
+
+.dmm-manager-panel {
+    min-width: 500px;
+    padding: 4px;
+}
+
+.dmm-manager-char-select {
+    min-width: 180px;
+}
+
+.dmm-manager-list {
+    max-height: 60vh;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.dmm-memory-card {
+    border: 1px solid var(--SmartThemeBorderColor, rgba(128,128,128,0.3));
+    border-radius: 6px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.dmm-card-active {
+    border-left: 3px solid #66cc66;
+}
+
+.dmm-card-inactive {
+    border-left: 3px solid rgba(128,128,128,0.4);
+    opacity: 0.75;
+}
+
+.dmm-status-badge {
+    font-size: 0.8em;
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.dmm-badge-active {
+    color: #66cc66;
+}
+
+.dmm-badge-inactive {
+    color: rgba(128,128,128,0.7);
+}
+
+.dmm-card-preview {
+    font-size: 0.9em;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.dmm-card-lifespan {
+    font-size: 0.82em;
+}
+
+.dmm-card-intensity {
+    font-size: 0.82em;
+}
+
+.dmm-intensity-override {
+    border-left: 2px solid var(--SmartThemeBorderColor, rgba(128,128,128,0.3));
+    padding-left: 10px !important;
+    margin-top: 2px;
+}
+
+.dmm-card-actions {
+    margin-top: 2px;
+}
+
+.dmm-btn-danger {
+    color: #cc6666 !important;
+}
+
+.dmm-btn-danger:hover {
+    color: #ff8888 !important;
+}
+
+.dmm-create-new-btn {
+    margin-top: 4px;
+}

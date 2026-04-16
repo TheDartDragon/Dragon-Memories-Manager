@@ -1,0 +1,8 @@
+{
+  "display_name": "Dragon Memories Manager",
+  "version": "0.1.0",
+  "js": "index.js",
+  "css": "style.css",
+  "author": "DartDragon",
+  "description": "Per-character episodic memory for group RP"
+}

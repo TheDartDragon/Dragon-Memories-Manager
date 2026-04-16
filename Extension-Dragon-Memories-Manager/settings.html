@@ -1,0 +1,128 @@
+<div id="dragon_memory_manager_settings" class="extension_block">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b>Dragon Memories Manager</b>
+            <div class="inline-drawer-icon fa-fw fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+
+            <!-- ── Memories Manager character ────────────────────────────── -->
+            <div class="title_restorable">
+                <b>Memories Manager Character</b>
+            </div>
+            <div class="flex-container flexFlowColumn flexGap5">
+                <label for="dmm_mm_name">Name shown in chat</label>
+                <input id="dmm_mm_name" type="text" class="text_pole" placeholder="Memories Manager" />
+            </div>
+            <div class="flex-container flexGap10 alignItemsCenter" style="margin-top:6px">
+                <img id="dmm_mm_avatar_preview" class="dmm-settings-avatar" src="" alt="MM Avatar" />
+                <div class="flex-container flexGap5 flexWrap">
+                    <input id="dmm_mm_avatar_upload_input" type="file" accept="image/*" style="display:none" />
+                    <button id="dmm_mm_avatar_upload" class="menu_button interactable">Upload Image</button>
+                    <button id="dmm_mm_avatar_select" class="menu_button interactable">Select from cards</button>
+                    <button id="dmm_mm_avatar_reset" class="menu_button interactable">Reset to Default</button>
+                </div>
+            </div>
+
+            <hr class="sysHR" />
+
+            <!-- ── Memory behavior ───────────────────────────────────────── -->
+            <div class="title_restorable">
+                <b>Memory Behavior</b>
+            </div>
+            <div class="flex-container flexGap5 alignItemsCenter">
+                <label for="dmm_default_lifespan">Default lifespan</label>
+                <input id="dmm_default_lifespan" type="number" min="1" max="999"
+                    class="text_pole" style="width:80px" value="20" />
+                <small class="opacity50p">character messages before expiry</small>
+            </div>
+
+            <hr class="sysHR" />
+
+            <!-- ── Context injection ─────────────────────────────────────── -->
+            <div class="title_restorable">
+                <b>Context Injection</b>
+            </div>
+
+            <!-- Preset selector — at top of section; covers position + both templates -->
+            <div class="flex-container flexGap5 alignItemsCenter flexWrap" style="margin-bottom:8px">
+                <label style="white-space:nowrap">Preset:</label>
+                <select id="dmm_template_preset_select" class="text_pole" style="flex:1;min-width:140px">
+                    <option value="">— load preset —</option>
+                </select>
+                <button id="dmm_template_preset_save" class="menu_button interactable">Save As</button>
+                <button id="dmm_template_preset_delete" class="menu_button interactable">Delete</button>
+                <button id="dmm_template_preset_restore" class="menu_button interactable">Restore Defaults</button>
+            </div>
+
+            <div class="flex-container flexFlowColumn flexGap5">
+                <label for="dmm_injection_position">Injection position</label>
+                <select id="dmm_injection_position" class="text_pole">
+                    <option value="after_world_info">After World Info (default)</option>
+                    <option value="before_world_info">Before World Info</option>
+                    <option value="after_system">After System Prompt</option>
+                    <option value="after_char_desc">After Character Description</option>
+                    <option value="before_chat">Just Before Chat History</option>
+                    <option value="at_depth">At Depth (like World Info)</option>
+                </select>
+                <div id="dmm_depth_controls" class="flex-container flexGap5 alignItemsCenter" style="display:none">
+                    <label for="dmm_injection_depth">Depth:</label>
+                    <input id="dmm_injection_depth" type="number" min="0" max="100"
+                        class="text_pole" style="width:64px" value="5" />
+                    <label for="dmm_injection_role">Role:</label>
+                    <select id="dmm_injection_role" class="text_pole" style="width:120px">
+                        <option value="system">System</option>
+                        <option value="user">User</option>
+                        <option value="assistant">Assistant</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex-container flexFlowColumn flexGap5" style="margin-top:10px">
+                <label for="dmm_generation_prompt">Generation prompt</label>
+                <textarea id="dmm_generation_prompt" class="text_pole textarea_compact" rows="8"
+                    placeholder="{{char}} = character name, {{transcript}} = filtered messages transcript"></textarea>
+                <small class="opacity50p">Sent to the LLM to generate the memory. <code>{{char}}</code> = character name, <code>{{transcript}}</code> = filtered message transcript.</small>
+            </div>
+            <div class="flex-container flexFlowColumn flexGap5" style="margin-top:6px">
+                <label for="dmm_injection_template">Injection wrapper</label>
+                <textarea id="dmm_injection_template" class="text_pole textarea_compact" rows="3"
+                    placeholder="{{summary}}"></textarea>
+                <small class="opacity50p"><code>{{summary}}</code> inserts the generated memory. <code>{{char}}</code> = character name. E.g. <code>&lt;memory&gt;{{summary}}&lt;/memory&gt;</code></small>
+            </div>
+
+            <hr class="sysHR" />
+
+            <!-- ── Summarization ─────────────────────────────────────────── -->
+            <div class="title_restorable">
+                <b>Summarization Settings</b>
+            </div>
+            <div class="flex-container flexFlowColumn flexGap5">
+                <label for="dmm_summary_profile">Connection Profile</label>
+                <select id="dmm_summary_profile" class="text_pole">
+                    <option value="">(use current profile)</option>
+                </select>
+                <small class="opacity50p">Optional. Switches to this profile before generating a memory summary, then restores your previous profile. Use this to point summarization at a faster/cheaper model. Requires the Connection Manager extension.</small>
+            </div>
+
+            <hr class="sysHR" />
+
+            <!-- ── Debug ─────────────────────────────────────────────────── -->
+            <div class="title_restorable">
+                <b>Debug</b>
+            </div>
+            <div class="flex-container flexFlowColumn flexGap5">
+                <div class="flex-container flexGap5 alignItemsCenter">
+                    <input id="dmm_debug_logging" type="checkbox" />
+                    <label for="dmm_debug_logging">Enable debug logging to console</label>
+                </div>
+                <small class="opacity50p">All DMM events are always stored in a 500-entry ring buffer regardless of this setting. Use the buttons below to export the buffer for bug reports.</small>
+                <div class="flex-container flexGap5">
+                    <button id="dmm_copy_log" class="menu_button interactable">Copy Log to Clipboard</button>
+                    <button id="dmm_clear_log" class="menu_button interactable">Clear Log</button>
+                </div>
+            </div>
+
+        </div><!-- /inline-drawer-content -->
+    </div><!-- /inline-drawer -->
+</div>
