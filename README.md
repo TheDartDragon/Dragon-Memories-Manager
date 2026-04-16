@@ -2,7 +2,7 @@
 
 A [SillyTavern](https://github.com/SillyTavern/SillyTavern) extension for per-character episodic memory in group roleplay.
 
-Each character remembers only what they personally witnessed — based on the [Presence](https://github.com/SillyTavern/SillyTavern-Presence) extension's per-message tracking. Memories are stored in the chat file, injected into the correct character's prompt at generation time, and expire naturally as the character accumulates their own messages.
+Each character remembers only what they personally witnessed — based on the [Presence](https://github.com/leandrojofre/SillyTavern-Presence) extension's per-message tracking. Memories are stored in the chat file, injected into the correct character's prompt at generation time, and expire naturally as the character accumulates their own messages.
 
 ---
 
@@ -32,7 +32,7 @@ Each character remembers only what they personally witnessed — based on the [P
 ## Requirements
 
 - **SillyTavern** — current public release
-- **[Presence extension](https://github.com/SillyTavern/SillyTavern-Presence)** — strongly recommended
+- **[Presence extension](https://github.com/leandrojofre/SillyTavern-Presence)** — strongly recommended
 
 > **Without Presence installed**, the extension cannot determine which characters witnessed which messages. All messages in the selected range will be included in every summary regardless of who was present, which defeats the purpose of per-character isolation. A warning banner appears in the extension panel if Presence is not detected.
 
