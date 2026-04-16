@@ -53,7 +53,7 @@ Each character remembers only what they personally witnessed — based on the [P
 ### Manual
 
 1. Download or clone this repository.
-2. Place the `Extension-Dragon-Memories-Manager` folder in:
+2. Place the `Dragon-Memories-Manager` folder in:
    ```
    SillyTavern/public/extensions/third-party/
    ```
