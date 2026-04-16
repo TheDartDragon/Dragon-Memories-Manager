@@ -1,6 +1,7 @@
 # Dragon Memories Manager
 
 A [SillyTavern](https://github.com/SillyTavern/SillyTavern) extension for per-character episodic memory in group roleplay.
+Built with Claude Code (Anthropic)
 
 Each character remembers only what they personally witnessed — based on the [Presence](https://github.com/leandrojofre/SillyTavern-Presence) extension's per-message tracking. Memories are stored in the chat file, injected into the correct character's prompt at generation time, and expire naturally as the character accumulates their own messages.
 
