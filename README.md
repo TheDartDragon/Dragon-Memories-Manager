@@ -63,6 +63,8 @@ Each character remembers only what they personally witnessed — based on the [P
 
 ## Quick Start
 
+### Full workflow (one character at a time)
+
 1. Open a group chat and run a scene.
 2. Click the **wand (⚡) menu** → **Create Memory**.
 3. Select a character using the avatar buttons.
@@ -73,6 +75,13 @@ Each character remembers only what they personally witnessed — based on the [P
 
 The memory is now active. It will be injected into that character's context every time they generate a response, until it expires.
 
+### Quick baseline (all characters at once)
+
+1. Click the **wand (⚡) menu** → **Create Memory**.
+2. Click **All Remember All** (below the character avatar buttons).
+
+The extension generates and saves a full-history memory for every character in the group using default lifespan and injection settings. No review step — the first result is saved automatically. Use the Memory Manager panel afterward to inspect, edit, or adjust individual entries.
+
 ---
 
 ## Features
@@ -80,6 +89,7 @@ The memory is now active. It will be injected into that character's context ever
 - **Per-character isolation** — each character's memories are stored and injected separately; one character's memories never appear in another's context.
 - **Presence filtering** — only messages where the target character was actually present are included in the summarization transcript.
 - **Three range selection modes** — manual range input, automatic from last summary, or click-to-mark directly in the chat.
+- **All Remember All** — one-click baseline: generates and saves a full-history memory for every character in the group with default settings. No decisions required — useful for a quick sanity-check or to establish a starting point before tweaking individual memories.
 - **In-chat MM flow** — the Memory Manager conducts the creation flow as a pseudo-character in the chat, using SillyTavern's native swipe and edit UI.
 - **Lifespan** — memories expire automatically after a configurable number of the character's own generated messages.
 - **Memory intensity** — per-memory injection position override, so a pivotal scene can inject deeper in the prompt than a routine one.
@@ -167,6 +177,7 @@ Shows all stored memories for any character in the current chat. Characters with
 | Control | Action |
 |---|---|
 | **Character dropdown** | Switch between characters. |
+| **↺ Reset range** | Clears the "From Last Summary" range pointer for the selected character. The next summary using that mode will start from message 0. Useful after manually deleting memories and wanting to re-summarize from scratch. |
 | **✕** (red, right of dropdown) | Delete all memories for the selected character. Asks for confirmation. Does not affect the character card or group membership. |
 
 ### Memory cards

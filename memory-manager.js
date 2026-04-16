@@ -28,8 +28,7 @@ function getStore() {
 
 export function getCharMemories(charName) {
     const store = getStore();
-    if (!Array.isArray(store[charName])) store[charName] = [];
-    return store[charName];
+    return Array.isArray(store[charName]) ? store[charName] : [];
 }
 
 export function saveMemories() {
@@ -103,6 +102,21 @@ export function setLastSummarizedAt(charName, endIndex) {
     store._lastSummarizedAt[charName] = endIndex;
     saveMemories();
     dmmLog(`setLastSummarizedAt ["${charName}"] = msg #${endIndex}`);
+}
+
+/**
+ * Clear the "From Last Summary" range tracking for a character, so the next
+ * summary using that mode will start from message 0.
+ *
+ * @param {string} charName
+ */
+export function clearLastSummarizedAt(charName) {
+    const store = getStore();
+    if (store._lastSummarizedAt?.[charName] != null) {
+        delete store._lastSummarizedAt[charName];
+        saveMemories();
+        dmmLog(`clearLastSummarizedAt ["${charName}"]`);
+    }
 }
 
 /**

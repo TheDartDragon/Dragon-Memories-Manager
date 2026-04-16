@@ -2,6 +2,16 @@
 
 All notable changes to Dragon Memories Manager will be documented here.
 
+## [0.1.1] — 2026-04-16
+
+### Added
+- **All Remember All** button in the character selector step — generates and saves a full-history memory for every character in the group with default settings in one click. No review step; first LLM result is saved automatically. Intended as a quick baseline before individual tweaking.
+- **↺ Reset range** button in the Memory Manager panel character selector row — clears the "From Last Summary" range pointer for the selected character so the next summary starts from message 0. Useful after manually deleting memories.
+
+### Fixed
+- `getCharMemories` no longer writes an empty array to the store when called for a character with no memories. Previously, any generation event could silently create a phantom empty entry for the generating character, causing foreign characters to appear in the Memory Manager panel dropdown.
+- Memory Manager panel now filters out empty character arrays from the store, cleaning up any phantom entries left by previous versions.
+
 ## [0.1.0] — 2025
 
 ### Initial release

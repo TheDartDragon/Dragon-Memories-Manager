@@ -24,6 +24,7 @@ import {
     getMarkers,
     clearMarkers,
     setLastSummarizedAt,
+    clearLastSummarizedAt,
     reassignMemoryEntry,
     deleteCharMemories,
 } from './memory-manager.js';
@@ -177,7 +178,7 @@ async function showCharSelector() {
         return;
     }
 
-    const { $el } = await postMMMessage('Create memory for which character?');
+    const { idx: selectorMsgIdx, $el } = await postMMMessage('Create memory for which character?');
     const $row    = $('<div class="dmm-char-selector flex-container flexGap10 flexWrap">');
 
     chars.forEach(char => {
@@ -200,12 +201,96 @@ async function showCharSelector() {
         $row.append($btn);
     });
 
+    const $bulkRow = $('<div class="flex-container flexFlowColumn flexGap5 mt5">');
+    $bulkRow.append('<div class="opacity50p" style="text-align:center;font-size:0.85em;border-top:1px solid var(--SmartThemeBorderColor);padding-top:5px">— or —</div>');
+    const $bulkBtn = $('<button class="menu_button interactable" title="Generate a memory for every character in this chat using all available messages. The first result is saved automatically with default settings — a quick baseline to review later.">All Remember All</button>');
+    $bulkBtn.on('click', async () => {
+        $row.find('.dmm-char-btn').prop('disabled', true);
+        $bulkBtn.prop('disabled', true);
+        $cancelRow.find('button').prop('disabled', true);
+        await runBulkMemories(chars, selectorMsgIdx);
+    });
+    $bulkRow.append($bulkBtn);
+
     const $cancelRow = $('<div class="flex-container mt5">');
     const $cancelBtn = $('<button class="menu_button interactable">Cancel</button>');
     $cancelBtn.on('click', cancelFlow);
     $cancelRow.append($cancelBtn);
 
-    $el.find('.mes_block').append($row, $cancelRow);
+    $el.find('.mes_block').append($row, $bulkRow, $cancelRow);
+}
+
+// ── Bulk flow: generate memories for all group chars at once ─────────────────
+
+async function runBulkMemories(chars, selectorMsgIdx) {
+    const ctx      = getContext();
+    const settings = getSettings();
+
+    // Capture the last real message index before any MM messages were added.
+    // state.mmMsgIndices[0] is the char-selector message itself.
+    const lastRealIdx = (state.mmMsgIndices[0] ?? ctx.chat.length) - 1;
+
+    const saved   = [];
+    const skipped = [];
+    const total   = chars.length;
+
+    for (let i = 0; i < total; i++) {
+        const charName = chars[i].name;
+
+        updateMMMessage(
+            selectorMsgIdx,
+            `**All Remember All** — generating memories…\n\n` +
+            `Processing ${i + 1} / ${total}: **${charName}**`,
+        );
+
+        try {
+            // Always use the full chat range — "All Remember All" is a baseline
+            // tool, not an incremental one.  This avoids stale _lastSummarizedAt
+            // values silently producing an empty range.
+            const fullRange = `0-${ctx.chat.length - 1}`;
+            const { summary, startIndex, endIndex } = await collectFilterAndSummarize(
+                charName, 'manual', fullRange, settings,
+            );
+
+            const entry = {
+                id:                 uuidv4(),
+                summary,
+                created_at_message: lastRealIdx,
+                message_range:      `${startIndex}-${endIndex}`,
+                lifespan:           settings?.defaultLifespan ?? 20,
+                char_message_count: 0,
+                active:             true,
+                format_template:    'plist',
+                injectionPosition:  null,
+                injectionDepth:     null,
+                injectionRole:      null,
+            };
+
+            addMemoryEntry(charName, entry);
+            setLastSummarizedAt(charName, endIndex);
+            saved.push(charName);
+            dmmLog(`Bulk memory saved for "${charName}"`, { range: entry.message_range });
+        } catch (err) {
+            console.warn(`[${EXT_NAME}] Bulk memory skipped for "${charName}":`, err.message);
+            skipped.push(charName);
+        }
+    }
+
+    await ghostMMInteraction(state.mmMsgIndices);
+    await ctx.saveChat();
+
+    if (saved.length > 0) {
+        const skipNote = skipped.length ? ` | Skipped: ${skipped.join(', ')}` : '';
+        toastr.success(`Memories saved: ${saved.join(', ')}${skipNote}`, EXT_NAME);
+    } else {
+        toastr.warning(
+            'No memories could be generated. Check that messages exist and the Presence extension is active.',
+            EXT_NAME,
+        );
+    }
+
+    dmmLog('Bulk flow complete', { saved, skipped });
+    resetState();
 }
 
 // ── Step 3: Range selector ───────────────────────────────────────────────────
@@ -706,7 +791,7 @@ export async function showManagerPanel() {
 
     // Collect character names: current group/char first, then any with existing memories
     const store   = ctx.chatMetadata?.scene_memory ?? {};
-    const withMem = Object.keys(store).filter(k => k !== '_markers' && Array.isArray(store[k]));
+    const withMem = Object.keys(store).filter(k => k !== '_markers' && Array.isArray(store[k]) && store[k].length > 0);
 
     let current = [];
     if (ctx.groupId) {
@@ -732,10 +817,18 @@ export async function showManagerPanel() {
     const $charSelect = $('<select class="text_pole dmm-manager-char-select" style="flex:1;min-width:0" title="Switch between characters to view and manage their memories">');
     allChars.forEach(name => $charSelect.append(`<option value="${name}">${name}</option>`));
 
+    const $resetRangeBtn = $('<button class="menu_button interactable" title="Reset the \'From Last Summary\' range pointer for this character. The next summary using that mode will start from message 0 again." style="flex-shrink:0;padding:4px 8px">↺ Reset range</button>');
     const $deleteCharBtn = $('<button class="menu_button interactable dmm-btn-danger" title="Permanently delete ALL stored memories for this character. The character itself is not affected — only the memory log is cleared." style="flex-shrink:0;padding:4px 8px">✕</button>');
     const $selectorRow = $('<div class="flex-container flexGap10 alignItemsCenter" style="flex-wrap:nowrap">');
-    $selectorRow.append('<label style="flex-shrink:0">Character:</label>', $charSelect, $deleteCharBtn);
+    $selectorRow.append('<label style="flex-shrink:0">Character:</label>', $charSelect, $resetRangeBtn, $deleteCharBtn);
     $panel.append($selectorRow);
+
+    $resetRangeBtn.on('click', () => {
+        const charName = $charSelect.val();
+        if (!charName) return;
+        clearLastSummarizedAt(charName);
+        toastr.success(`Range tracking reset for "${charName}". Next "From Last Summary" will start from message 0.`, EXT_NAME);
+    });
 
     $deleteCharBtn.on('click', async () => {
         const charName = $charSelect.val();
