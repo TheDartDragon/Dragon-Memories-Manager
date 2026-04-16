@@ -46,7 +46,7 @@ Each character remembers only what they personally witnessed — based on the [P
 2. Click **Install Extension**.
 3. Paste this URL and confirm:
    ```
-   https://github.com/DartDragon/Extension-Dragon-Memories-Manager
+   https://github.com/TheDartDragon/Dragon-Memories-Manager)
    ```
 
 ### Manual
