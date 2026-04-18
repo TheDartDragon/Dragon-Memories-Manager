@@ -1,11 +1,11 @@
-// summarizer.js — Step 4: fire generateQuietPrompt with filtered transcript
+// summarizer.js — generates memory summaries via generateRaw (no ST context injection)
 //
-// Console test (after Steps 1-3 verified):
+// Console test:
 //   DMM.summarize('Ivrene', 'manual', '0-10')
 //   DMM.summarize('Ivrene', 'last_summary')
 //   DMM.summarize('Ivrene', 'markers')   // requires markers set first
 
-import { generateQuietPrompt } from '../../../../script.js';
+import { generateRaw } from '../../../../script.js';
 import { getContext } from '../../../extensions.js';
 import { EXT_NAME } from './constants.js';
 import { collectAndFilter } from './memory-manager.js';
@@ -77,10 +77,9 @@ function buildPrompt(charName, messages, promptTemplate = DEFAULT_GENERATION_PRO
  * @returns {Promise<*>}
  */
 async function withSummaryProfile(summaryProfileName, fn) {
-    const ctx           = getContext();
-    const profileCmd    = ctx.SlashCommandParser?.commands?.['profile'];
+    const ctx        = getContext();
+    const profileCmd = ctx.SlashCommandParser?.commands?.['profile'];
 
-    // If no profile configured or command unavailable, just run
     if (!summaryProfileName || !profileCmd) {
         if (summaryProfileName && !profileCmd) {
             console.warn(`[${EXT_NAME}] Connection Manager not available — running with current profile`);
@@ -88,7 +87,6 @@ async function withSummaryProfile(summaryProfileName, fn) {
         return await fn();
     }
 
-    // Read current profile name
     let previousProfile = null;
     try {
         previousProfile = await profileCmd.callback({}, '');
@@ -96,7 +94,6 @@ async function withSummaryProfile(summaryProfileName, fn) {
         console.warn(`[${EXT_NAME}] Could not read current connection profile:`, e);
     }
 
-    // Switch to summary profile
     try {
         await profileCmd.callback({ await: 'true' }, summaryProfileName);
         dmmLog(`Switched to summary profile: "${summaryProfileName}"`);
@@ -108,7 +105,6 @@ async function withSummaryProfile(summaryProfileName, fn) {
     try {
         return await fn();
     } finally {
-        // Always restore, even on error
         if (previousProfile && previousProfile !== '<None>') {
             try {
                 await profileCmd.callback({ await: 'false' }, previousProfile);
@@ -123,7 +119,7 @@ async function withSummaryProfile(summaryProfileName, fn) {
 // ── Core generation ──────────────────────────────────────────────────────────
 
 /**
- * True while our summarizer is running a generateQuietPrompt call.
+ * True while our summarizer is running a generateRaw call.
  * The injection hook in index.js checks this to skip memory injection
  * during summarization (we don't want memories in the scribe prompt).
  */
@@ -131,7 +127,10 @@ export let isSummarizing = false;
 
 /**
  * Generate a memory summary from already-collected and filtered messages.
- * Returns the raw trimmed LLM output.
+ *
+ * Uses generateRaw so only our scribe prompt is sent to the LLM — no chat
+ * history, no lorebooks, no other extension injections. Instruct template
+ * tokens are applied automatically by ST based on the current model config.
  *
  * @param {string}   charName
  * @param {object[]} filteredMessages
@@ -145,17 +144,14 @@ export async function generateMemorySummary(charName, filteredMessages, settings
 
     const promptTemplate = settings?.generationPrompt || DEFAULT_GENERATION_PROMPT;
     const prompt = buildPrompt(charName, filteredMessages, promptTemplate);
+    const summaryProfile = settings?.summaryConnectionProfile || '';
 
     dmmLog(`Summarizing ${filteredMessages.length} messages for "${charName}", prompt length: ${prompt.length} chars`);
-
-    const summaryProfile = settings?.summaryConnectionProfile || '';
 
     isSummarizing = true;
     let result;
     try {
-        result = await withSummaryProfile(summaryProfile, () =>
-            generateQuietPrompt({ quietPrompt: prompt, skipWIAN: true }),
-        );
+        result = await withSummaryProfile(summaryProfile, () => generateRaw({ prompt }));
     } finally {
         isSummarizing = false;
     }
@@ -165,7 +161,7 @@ export async function generateMemorySummary(charName, filteredMessages, settings
     }
 
     const trimmed = result.trim();
-    dmmLog(`Memory summary for "${charName}":`, trimmed);
+    dmmLog(`Memory summary for "${charName}": ${trimmed.length} chars — "${trimmed.slice(0, 80)}${trimmed.length > 80 ? '…' : ''}"`);
     return trimmed;
 }
 
@@ -206,6 +202,6 @@ if (typeof window !== 'undefined') {
     window.DMM = window.DMM || {};
     Object.assign(window.DMM, {
         summarize: collectFilterAndSummarize,
-        buildPrompt,          // expose for inspecting the prompt before firing
+        buildPrompt,
     });
 }

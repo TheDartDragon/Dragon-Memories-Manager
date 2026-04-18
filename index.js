@@ -128,8 +128,8 @@ function onSettingChanged() {
     s.injectionRole           = String($('#dmm_injection_role').val() || 'system');
     s.injectionTemplate       = String($('#dmm_injection_template').val());
     s.generationPrompt        = String($('#dmm_generation_prompt').val());
-    s.summaryConnectionProfile = String($('#dmm_summary_profile').val() || '');
-    s.debugLogging            = $('#dmm_debug_logging').prop('checked');
+    s.summaryConnectionProfile  = String($('#dmm_summary_profile').val() || '');
+    s.debugLogging              = $('#dmm_debug_logging').prop('checked');
     setDebugLogging(s.debugLogging);
     saveSettingsDebounced();
 }
@@ -454,6 +454,14 @@ jQuery(async function () {
         onBeforeGenerate(getSettings());
     });
 
-    dmmLog('v0.1.0 loaded');
-    console.log(`[${EXT_NAME}] v0.1.0 loaded`);
+    fetch(`scripts/extensions/third-party/${FOLDER_NAME}/manifest.json`)
+        .then(r => r.json())
+        .then(m => {
+            const v = m.version ?? 'unknown';
+            dmmLog(`v${v} loaded`);
+            console.log(`[${EXT_NAME}] v${v} loaded`);
+        })
+        .catch(() => {
+            dmmLog('loaded (version unknown)');
+        });
 });
