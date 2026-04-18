@@ -5,11 +5,12 @@
 //   DMM.summarize('Ivrene', 'last_summary')
 //   DMM.summarize('Ivrene', 'markers')   // requires markers set first
 
-import { generateRaw } from '../../../../script.js';
+import { generateRaw, max_context, setCharacterId, this_chid } from '../../../../script.js';
 import { getContext } from '../../../extensions.js';
+import { checkWorldInfo, world_info_include_names } from '../../../world-info.js';
 import { EXT_NAME } from './constants.js';
 import { collectAndFilter } from './memory-manager.js';
-import { dmmLog } from './logger.js';
+import { dmmLog, dmmDevLog } from './logger.js';
 
 // ── Default generation prompt ────────────────────────────────────────────────
 
@@ -61,6 +62,74 @@ function buildPrompt(charName, messages, promptTemplate = DEFAULT_GENERATION_PRO
     return promptTemplate
         .replace(/\{\{char\}\}/g, charName)
         .replace(/\{\{transcript\}\}/g, transcript);
+}
+
+// ── Lorebook context ─────────────────────────────────────────────────────────
+
+/**
+ * Run ST's lorebook key matching against the filtered transcript messages.
+ * Returns the concatenated content of all entries whose keys fired, or ''
+ * if nothing matched. isDryRun=true means no side effects (no timed effects,
+ * no WORLD_INFO_ACTIVATED event).
+ *
+ * @param {object[]} messages  presence-filtered transcript messages
+ * @returns {Promise<string>}
+ */
+/**
+ * @param {object[]} messages         presence-filtered transcript messages
+ * @param {string}   charName         character being summarized
+ * @param {string[]} [excludedLorebooks]  blocklist of lorebook filenames; empty = include all
+ */
+async function getActivatedLorebookContent(messages, charName, excludedLorebooks = []) {
+    try {
+        // WorldInfoBuffer expects string[], reversed (depth 0 = most recent).
+        const chatForWI = messages
+            .map(x => world_info_include_names ? `${x.name}: ${x.mes}` : x.mes)
+            .reverse();
+
+        // getCharacterLore() and character filter checks both use this_chid, which is
+        // null in group chats outside of active generation. Temporarily set it to the
+        // summarized character's index so lorebooks and filters resolve correctly.
+        const ctx = getContext();
+        const charIdx = ctx.characters.findIndex(c => c.name === charName);
+        const savedChid = this_chid;
+        if (charIdx !== -1) setCharacterId(charIdx);
+
+        let result;
+        try {
+            result = await checkWorldInfo(chatForWI, max_context, true);
+        } finally {
+            setCharacterId(savedChid);
+        }
+
+        let entries = Array.from(result.allActivatedEntries?.values() ?? []);
+
+        dmmDevLog(`WI scan raw: ${entries.length} entries`, entries.map(e => ({
+            world:   e.world,
+            uid:     e.uid,
+            comment: e.comment,
+            constant: e.constant,
+            preview: (e.content || '').slice(0, 80),
+        })));
+
+        if (excludedLorebooks.length > 0) {
+            const before = entries.length;
+            entries = entries.filter(e => !excludedLorebooks.includes(e.world));
+            dmmDevLog(`Lorebook blocklist applied: ${before} → ${entries.length} (excluded: ${excludedLorebooks.join(', ')})`);
+        }
+
+        const content = entries.map(e => e.content).filter(Boolean).join('\n');
+        if (content) {
+            dmmLog(`Lorebook scan: ${entries.length} entries activated, ${content.length} chars`);
+        } else {
+            dmmLog('Lorebook scan: no entries activated');
+        }
+        return content;
+    } catch (e) {
+        dmmLog(`Lorebook scan failed, proceeding without it: ${e?.message ?? e}`);
+        console.warn(`[${EXT_NAME}] Lorebook scan failed:`, e);
+        return '';
+    }
 }
 
 // ── Profile swap ─────────────────────────────────────────────────────────────
@@ -119,11 +188,12 @@ async function withSummaryProfile(summaryProfileName, fn) {
 // ── Core generation ──────────────────────────────────────────────────────────
 
 /**
- * True while our summarizer is running a generateRaw call.
- * The injection hook in index.js checks this to skip memory injection
- * during summarization (we don't want memories in the scribe prompt).
+ * Count of concurrent generateRaw scribe calls in progress.
+ * Non-zero means summarization is active. Integer rather than boolean
+ * so nested/parallel calls (e.g. future bulk parallelism) stay correct.
+ * The injection hook in index.js checks this to skip memory injection.
  */
-export let isSummarizing = false;
+export let isSummarizing = 0;
 
 /**
  * Generate a memory summary from already-collected and filtered messages.
@@ -142,18 +212,27 @@ export async function generateMemorySummary(charName, filteredMessages, settings
         throw new Error(`[${EXT_NAME}] No messages to summarize for "${charName}"`);
     }
 
-    const promptTemplate = settings?.generationPrompt || DEFAULT_GENERATION_PROMPT;
-    const prompt = buildPrompt(charName, filteredMessages, promptTemplate);
-    const summaryProfile = settings?.summaryConnectionProfile || '';
+    const promptTemplate   = settings?.generationPrompt || DEFAULT_GENERATION_PROMPT;
+    const prompt           = buildPrompt(charName, filteredMessages, promptTemplate);
+    const summaryProfile   = settings?.summaryConnectionProfile || '';
+    const includeLorebooks  = settings?.includeLorebooksDuringSum ?? false;
+    const excludedLorebooks = settings?.excludedLorebooks ?? [];
 
     dmmLog(`Summarizing ${filteredMessages.length} messages for "${charName}", prompt length: ${prompt.length} chars`);
 
-    isSummarizing = true;
+    dmmLog(`Lorebook inclusion: ${includeLorebooks ? 'enabled' : 'disabled'}${excludedLorebooks.length ? ` (blocking: ${excludedLorebooks.join(', ')})` : ''}`);
+    const systemPrompt = includeLorebooks
+        ? await getActivatedLorebookContent(filteredMessages, charName, excludedLorebooks)
+        : '';
+
+    isSummarizing++;
     let result;
     try {
-        result = await withSummaryProfile(summaryProfile, () => generateRaw({ prompt }));
+        result = await withSummaryProfile(summaryProfile, () =>
+            generateRaw({ prompt, systemPrompt: systemPrompt || undefined }),
+        );
     } finally {
-        isSummarizing = false;
+        isSummarizing--;
     }
 
     if (!result || !result.trim()) {

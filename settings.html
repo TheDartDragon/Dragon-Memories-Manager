@@ -6,46 +6,38 @@
         </div>
         <div class="inline-drawer-content">
 
-            <!-- ── Memories Manager character ────────────────────────────── -->
-            <div class="title_restorable">
-                <b>Memories Manager Character</b>
-            </div>
-            <div class="flex-container flexFlowColumn flexGap5">
-                <label for="dmm_mm_name">Name shown in chat</label>
-                <input id="dmm_mm_name" type="text" class="text_pole" placeholder="Memories Manager" />
-            </div>
-            <div class="flex-container flexGap10 alignItemsCenter" style="margin-top:6px">
+            <!-- ── Manager Character ─────────────────────────────────────── -->
+            <div class="title_restorable"><b>Manager Character</b></div>
+            <div class="flex-container flexGap10 alignItemsCenter">
                 <img id="dmm_mm_avatar_preview" class="dmm-settings-avatar" src="" alt="MM Avatar" />
-                <div class="flex-container flexGap5 flexWrap">
-                    <input id="dmm_mm_avatar_upload_input" type="file" accept="image/*" style="display:none" />
-                    <button id="dmm_mm_avatar_upload" class="menu_button interactable">Upload Image</button>
-                    <button id="dmm_mm_avatar_select" class="menu_button interactable">Select from cards</button>
-                    <button id="dmm_mm_avatar_reset" class="menu_button interactable">Reset to Default</button>
+                <div class="flex-container flexFlowColumn flexGap5" style="flex:1">
+                    <input id="dmm_mm_name" type="text" class="text_pole" placeholder="Memories Manager" />
+                    <div class="flex-container flexGap5 flexWrap">
+                        <input id="dmm_mm_avatar_upload_input" type="file" accept="image/*" style="display:none" />
+                        <button id="dmm_mm_avatar_upload" class="menu_button interactable">Upload</button>
+                        <button id="dmm_mm_avatar_select" class="menu_button interactable">From cards</button>
+                        <button id="dmm_mm_avatar_reset" class="menu_button interactable">Reset</button>
+                    </div>
                 </div>
             </div>
 
             <hr class="sysHR" />
 
-            <!-- ── Memory behavior ───────────────────────────────────────── -->
-            <div class="title_restorable">
-                <b>Memory Behavior</b>
-            </div>
+            <!-- ── Memory Behavior ───────────────────────────────────────── -->
+            <div class="title_restorable"><b>Memory Behavior</b></div>
             <div class="flex-container flexGap5 alignItemsCenter">
                 <label for="dmm_default_lifespan">Default lifespan</label>
                 <input id="dmm_default_lifespan" type="number" min="1" max="999"
                     class="text_pole" style="width:80px" value="20" />
-                <small class="opacity50p">character messages before expiry</small>
+                <small class="opacity50p">of this character's messages before expiry</small>
             </div>
 
             <hr class="sysHR" />
 
-            <!-- ── Context injection ─────────────────────────────────────── -->
-            <div class="title_restorable">
-                <b>Context Injection</b>
-            </div>
+            <!-- ── Context Injection ─────────────────────────────────────── -->
+            <div class="title_restorable"><b>Context Injection</b></div>
 
-            <!-- Preset selector — at top of section; covers position + both templates -->
-            <div class="flex-container flexGap5 alignItemsCenter flexWrap" style="margin-bottom:8px">
+            <div class="flex-container flexGap5 alignItemsCenter flexWrap" style="margin-bottom:10px">
                 <label style="white-space:nowrap">Preset:</label>
                 <select id="dmm_template_preset_select" class="text_pole" style="flex:1;min-width:140px">
                     <option value="">— load preset —</option>
@@ -56,7 +48,7 @@
             </div>
 
             <div class="flex-container flexFlowColumn flexGap5">
-                <label for="dmm_injection_position">Injection position</label>
+                <label for="dmm_injection_position">Position in context</label>
                 <select id="dmm_injection_position" class="text_pole">
                     <option value="after_world_info">After World Info (default)</option>
                     <option value="before_world_info">Before World Info</option>
@@ -79,45 +71,62 @@
             </div>
 
             <div class="flex-container flexFlowColumn flexGap5" style="margin-top:10px">
-                <label for="dmm_generation_prompt">Generation prompt</label>
-                <textarea id="dmm_generation_prompt" class="text_pole textarea_compact" rows="8"
-                    placeholder="{{char}} = character name, {{transcript}} = filtered messages transcript"></textarea>
-                <small class="opacity50p">Sent to the LLM to generate the memory. <code>{{char}}</code> = character name, <code>{{transcript}}</code> = filtered message transcript.</small>
+                <label for="dmm_generation_prompt">Scribe prompt</label>
+                <textarea id="dmm_generation_prompt" class="text_pole textarea_compact" rows="8"></textarea>
+                <small class="opacity50p"><code>{{char}}</code> — character name &nbsp;·&nbsp; <code>{{transcript}}</code> — filtered chat transcript</small>
             </div>
-            <div class="flex-container flexFlowColumn flexGap5" style="margin-top:6px">
-                <label for="dmm_injection_template">Injection wrapper</label>
-                <textarea id="dmm_injection_template" class="text_pole textarea_compact" rows="3"
-                    placeholder="{{summary}}"></textarea>
-                <small class="opacity50p"><code>{{summary}}</code> inserts the generated memory. <code>{{char}}</code> = character name. E.g. <code>&lt;memory&gt;{{summary}}&lt;/memory&gt;</code></small>
+
+            <div class="flex-container flexFlowColumn flexGap5" style="margin-top:8px">
+                <label for="dmm_injection_template">Context wrapper</label>
+                <textarea id="dmm_injection_template" class="text_pole textarea_compact" rows="2"></textarea>
+                <small class="opacity50p"><code>{{summary}}</code> — generated memory &nbsp;·&nbsp; <code>{{char}}</code> — character name &nbsp;·&nbsp; e.g. <code>&lt;memory&gt;{{summary}}&lt;/memory&gt;</code></small>
             </div>
 
             <hr class="sysHR" />
 
             <!-- ── Summarization ─────────────────────────────────────────── -->
-            <div class="title_restorable">
-                <b>Summarization Settings</b>
-            </div>
+            <div class="title_restorable"><b>Summarization</b></div>
+
             <div class="flex-container flexFlowColumn flexGap5">
-                <label for="dmm_summary_profile">Connection Profile</label>
+                <label for="dmm_summary_profile">Connection profile</label>
                 <select id="dmm_summary_profile" class="text_pole">
-                    <option value="">(use current profile)</option>
+                    <option value="">(use current)</option>
                 </select>
-                <small class="opacity50p">Optional. Switches to this profile before generating a memory summary, then restores your previous profile. Use this to point summarization at a faster/cheaper model. Requires the Connection Manager extension. Memory summaries are generated with only your scribe prompt — no chat history, lorebooks, or other context injections.</small>
+                <small class="opacity50p">Switch to a different model for generation, then restore. Requires Connection Manager.</small>
             </div>
+
+            <div class="flex-container flexFlowColumn flexGap5" style="margin-top:10px">
+                <div class="flex-container flexGap5 alignItemsCenter">
+                    <input id="dmm_include_lorebooks" type="checkbox" />
+                    <label for="dmm_include_lorebooks">Include lorebook context during summarization</label>
+                </div>
+                <small class="opacity50p">Runs keyword matching against the transcript and feeds matched entries to the scribe as background context.</small>
+
+                <div class="flex-container flexFlowColumn flexGap5 dmm-indent-block">
+                    <label>Exclude lorebooks</label>
+                    <div id="dmm_lorebook_tags" class="dmm-tag-container"></div>
+                    <div class="flex-container flexGap5 alignItemsCenter">
+                        <select id="dmm_lorebook_filter_select" class="text_pole" style="flex:1">
+                            <option value="">— select to exclude —</option>
+                        </select>
+                        <button id="dmm_lorebook_filter_add" class="menu_button interactable">Add</button>
+                    </div>
+                    <small class="opacity50p">Lorebooks listed here are blocked from the scribe's context. Empty = all active lorebooks included.</small>
+                </div>
+            </div>
+
             <hr class="sysHR" />
 
             <!-- ── Debug ─────────────────────────────────────────────────── -->
-            <div class="title_restorable">
-                <b>Debug</b>
-            </div>
+            <div class="title_restorable"><b>Debug</b></div>
             <div class="flex-container flexFlowColumn flexGap5">
                 <div class="flex-container flexGap5 alignItemsCenter">
                     <input id="dmm_debug_logging" type="checkbox" />
-                    <label for="dmm_debug_logging">Enable debug logging to console</label>
+                    <label for="dmm_debug_logging">Log DMM events to console</label>
                 </div>
-                <small class="opacity50p">All DMM events are always stored in a 500-entry ring buffer regardless of this setting. Use the buttons below to export the buffer for bug reports.</small>
+                <small class="opacity50p">Events are always stored in a 500-entry ring buffer regardless of this setting.</small>
                 <div class="flex-container flexGap5">
-                    <button id="dmm_copy_log" class="menu_button interactable">Copy Log to Clipboard</button>
+                    <button id="dmm_copy_log" class="menu_button interactable">Copy Log</button>
                     <button id="dmm_clear_log" class="menu_button interactable">Clear Log</button>
                 </div>
             </div>

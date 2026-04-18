@@ -7,6 +7,7 @@ import { startMMFlow, showManagerPanel, isMMFlowActive } from './ui.js';
 import { rehideGhostMessages, tickMemoryLifespans } from './memory-manager.js';
 import { onBeforeGenerate, clearInjection } from './injector.js';
 import { isSummarizing, DEFAULT_GENERATION_PROMPT } from './summarizer.js';
+import { world_names } from '../../../world-info.js';
 import { dmmLog, setDebugLogging, getLogText, clearLog } from './logger.js';
 
 export { MODULE_NAME, EXT_NAME, FOLDER_NAME };
@@ -80,6 +81,8 @@ const DEFAULT_SETTINGS = {
 
     // Summarization profile overrides
     summaryConnectionProfile: '',
+    includeLorebooksDuringSum: false,
+    excludedLorebooks: [],          // blocklist of lorebook filenames; empty = include all
 
     // Format template presets (user-saved; built-ins live in BUILTIN_PRESETS)
     templatePresets: [],
@@ -103,6 +106,15 @@ function loadSettings() {
     syncSettingsToUI();
 }
 
+function renderLorebookTags(tags) {
+    const container = $('#dmm_lorebook_tags');
+    container.empty();
+    (tags ?? []).forEach((tag, i) => {
+        const pill = $(`<span class="dmm-tag">${$('<span>').text(tag).html()} <span class="dmm-tag-remove fa-solid fa-xmark" data-index="${i}"></span></span>`);
+        container.append(pill);
+    });
+}
+
 function syncSettingsToUI() {
     const s = getSettings();
     $('#dmm_mm_name').val(s.mmName);
@@ -114,6 +126,8 @@ function syncSettingsToUI() {
     syncInjectionDepthUI();
     $('#dmm_generation_prompt').val(s.generationPrompt);
     $('#dmm_injection_template').val(s.injectionTemplate);
+    $('#dmm_include_lorebooks').prop('checked', s.includeLorebooksDuringSum ?? false);
+    renderLorebookTags(s.excludedLorebooks);
     $('#dmm_debug_logging').prop('checked', s.debugLogging);
     // Profile dropdown value set after population in populateSummaryProfileDropdown()
     populateTemplatePresetDropdown();
@@ -129,6 +143,7 @@ function onSettingChanged() {
     s.injectionTemplate       = String($('#dmm_injection_template').val());
     s.generationPrompt        = String($('#dmm_generation_prompt').val());
     s.summaryConnectionProfile  = String($('#dmm_summary_profile').val() || '');
+    s.includeLorebooksDuringSum = $('#dmm_include_lorebooks').prop('checked');
     s.debugLogging              = $('#dmm_debug_logging').prop('checked');
     setDebugLogging(s.debugLogging);
     saveSettingsDebounced();
@@ -369,6 +384,40 @@ async function addSettingsPanel() {
         toastr.info(`Preset "${name}" deleted.`, EXT_NAME);
     });
 
+    // ── Summarization lorebook inclusion ─────────────────────────────────────
+    $('#dmm_include_lorebooks').on('change', onSettingChanged);
+
+    $('#dmm_lorebook_filter_select').on('focus', () => {
+        const sel = $('#dmm_lorebook_filter_select');
+        const prev = sel.val();
+        sel.empty().append('<option value="">— select lorebook —</option>');
+        (world_names ?? []).forEach(name => {
+            sel.append($('<option>').val(name).text(name));
+        });
+        if (prev) sel.val(prev);
+    });
+
+    $('#dmm_lorebook_filter_add').on('click', () => {
+        const val = $('#dmm_lorebook_filter_select').val();
+        if (!val) return;
+        const s = getSettings();
+        s.excludedLorebooks = s.excludedLorebooks ?? [];
+        if (!s.excludedLorebooks.includes(val)) {
+            s.excludedLorebooks.push(val);
+            renderLorebookTags(s.excludedLorebooks);
+            saveSettingsDebounced();
+        }
+        $('#dmm_lorebook_filter_select').val('');
+    });
+
+    $('#dmm_lorebook_tags').on('click', '.dmm-tag-remove', function () {
+        const idx = parseInt($(this).data('index'));
+        const s = getSettings();
+        s.excludedLorebooks.splice(idx, 1);
+        renderLorebookTags(s.excludedLorebooks);
+        saveSettingsDebounced();
+    });
+
     // ── Debug ────────────────────────────────────────────────────────────────
     $('#dmm_debug_logging').on('change', onSettingChanged);
 
@@ -439,7 +488,7 @@ jQuery(async function () {
 
     // Inject active memories and tick lifespans just before ST combines the prompt.
     eventSource.on(event_types.GENERATE_BEFORE_COMBINE_PROMPTS, () => {
-        if (isSummarizing) {
+        if (isSummarizing > 0) {
             dmmLog('GENERATE_BEFORE_COMBINE_PROMPTS: skipping (isSummarizing)');
             clearInjection();
             return;
@@ -452,6 +501,15 @@ jQuery(async function () {
             dmmLog('GENERATE_BEFORE_COMBINE_PROMPTS: skipping tick (MM flow active)', { char: char?.name });
         }
         onBeforeGenerate(getSettings());
+    });
+
+    // Strip any DMM injection that snuck into the assembled prompt during summarization.
+    // generateRaw fires GENERATE_AFTER_COMBINE_PROMPTS — other extensions could still inject.
+    eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, (data) => {
+        if (isSummarizing > 0) {
+            dmmLog('GENERATE_AFTER_COMBINE_PROMPTS: clearing stray injections (isSummarizing)');
+            clearInjection();
+        }
     });
 
     fetch(`scripts/extensions/third-party/${FOLDER_NAME}/manifest.json`)
