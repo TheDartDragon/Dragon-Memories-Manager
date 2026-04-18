@@ -4,7 +4,7 @@ import { setExtensionPrompt, extension_prompt_types } from '../../../../script.j
 import { getContext } from '../../../extensions.js';
 import { MODULE_NAME } from './constants.js';
 import { getCharMemories } from './memory-manager.js';
-import { dmmLog } from './logger.js';
+import { dmmLog, dmmDevLog } from './logger.js';
 
 export const INJECT_KEY = `${MODULE_NAME}_memories`;
 
@@ -87,7 +87,29 @@ export function onBeforeGenerate(settings) {
     const active   = memories.filter(m => m.active);
     if (!active.length) return;
 
-    const template = settings?.injectionTemplate || '{{summary}}';
+    const template        = settings?.injectionTemplate || '{{summary}}';
+    const maxInjectionChars = settings?.maxInjectionChars ?? 0;
+
+    // Apply bloat cap — newest memories win, oldest are dropped first.
+    const totalChars = active.reduce((sum, m) => sum + (m.summary || '').length, 0);
+    dmmDevLog(`Injection: ${active.length} active memories, ${totalChars} total chars, cap ${maxInjectionChars || 'unlimited'}`);
+
+    if (maxInjectionChars > 0 && active.length > 0) {
+        const byNewest = [...active].sort((a, b) => b.created_at_message - a.created_at_message);
+        const kept = [];
+        let total = 0;
+        for (const m of byNewest) {
+            const len = (m.summary || '').length;
+            if (total + len > maxInjectionChars) break;
+            kept.push(m);
+            total += len;
+        }
+        if (kept.length < active.length) {
+            dmmLog(`Bloat cap: keeping ${kept.length}/${active.length} memories (${total} chars, cap ${maxInjectionChars})`);
+        }
+        dmmDevLog(`Bloat cap result: kept ${kept.length}/${active.length} (${total} chars)`);
+        active = kept;
+    }
 
     // Group memories by their effective slot signature.
     const groups = new Map(); // sig → { type, depth, role, memories[] }

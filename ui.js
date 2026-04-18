@@ -9,6 +9,7 @@
 
 import { getContext, extension_settings } from '../../../extensions.js';
 import { getThumbnailUrl, saveSettingsDebounced } from '../../../../script.js';
+import { getTokenCount } from '../../../../scripts/tokenizers.js';
 import { getMessageTimeStamp } from '../../../RossAscends-mods.js';
 import { uuidv4 } from '../../../utils.js';
 import { MODULE_NAME, EXT_NAME, FOLDER_NAME } from './constants.js';
@@ -255,6 +256,7 @@ async function runBulkMemories(chars, selectorMsgIdx) {
             const entry = {
                 id:                 uuidv4(),
                 summary,
+                token_count:        getTokenCount(summary),
                 created_at_message: lastRealIdx,
                 message_range:      `${startIndex}-${endIndex}`,
                 lifespan:           settings?.defaultLifespan ?? 20,
@@ -697,6 +699,7 @@ async function saveMemory(reviewMsgIdx) {
     const entry = {
         id:                 uuidv4(),
         summary,
+        token_count:        getTokenCount(summary),
         created_at_message: lastRealIdx,
         message_range:      `${state.startIndex}-${state.endIndex}`,
         lifespan:           state.lifespan,
@@ -1106,13 +1109,18 @@ function buildMemoryCard(charName, entry, onRefresh) {
         ? entry.summary.slice(0, 150) + '…'
         : entry.summary;
 
+    const chatLen  = getContext().chat.length;
+    const endIndex = parseInt((entry.message_range || '').split('-')[1], 10);
+    const isStale  = !isNaN(endIndex) && endIndex >= chatLen;
+
     const $card = $(`
         <div class="dmm-memory-card ${isActive ? 'dmm-card-active' : 'dmm-card-inactive'}">
             <div class="dmm-card-header flex-container flexGap8 alignItemsCenter">
                 <span class="dmm-status-badge ${isActive ? 'dmm-badge-active' : 'dmm-badge-inactive'}">
                     ${isActive ? '● Active' : '○ Inactive'}
                 </span>
-                <span class="opacity50p">Messages ${entry.message_range} &bull; created at msg #${entry.created_at_message}</span>
+                <span class="opacity50p">Messages ${entry.message_range} &bull; created at msg #${entry.created_at_message} &bull; ${entry.token_count != null ? entry.token_count + ' tokens' : '—'}</span>
+                ${isStale ? '<span class="dmm-stale-badge" title="This memory\'s range extends beyond the current chat. It may have been created in a longer session or after messages were deleted.">⚠ stale range</span>' : ''}
             </div>
             <div class="dmm-card-preview">${preview}</div>
             <div class="dmm-card-lifespan flex-container flexGap5 alignItemsCenter">

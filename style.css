@@ -197,6 +197,16 @@
     margin-top: 2px;
 }
 
+.dmm-stale-badge {
+    font-size: 0.78em;
+    font-weight: bold;
+    color: #cc8800;
+    padding: 1px 5px;
+    border: 1px solid #cc8800;
+    border-radius: 3px;
+    opacity: 0.85;
+}
+
 .dmm-btn-danger {
     color: #cc6666 !important;
 }

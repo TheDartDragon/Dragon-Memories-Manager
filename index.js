@@ -83,6 +83,7 @@ const DEFAULT_SETTINGS = {
     summaryConnectionProfile: '',
     includeLorebooksDuringSum: false,
     excludedLorebooks: [],          // blocklist of lorebook filenames; empty = include all
+    maxInjectionChars: 0,           // 0 = unlimited; oldest memories dropped first when over cap
 
     // Format template presets (user-saved; built-ins live in BUILTIN_PRESETS)
     templatePresets: [],
@@ -126,6 +127,7 @@ function syncSettingsToUI() {
     syncInjectionDepthUI();
     $('#dmm_generation_prompt').val(s.generationPrompt);
     $('#dmm_injection_template').val(s.injectionTemplate);
+    $('#dmm_max_injection_chars').val(s.maxInjectionChars ?? 0);
     $('#dmm_include_lorebooks').prop('checked', s.includeLorebooksDuringSum ?? false);
     renderLorebookTags(s.excludedLorebooks);
     $('#dmm_debug_logging').prop('checked', s.debugLogging);
@@ -143,6 +145,7 @@ function onSettingChanged() {
     s.injectionTemplate       = String($('#dmm_injection_template').val());
     s.generationPrompt        = String($('#dmm_generation_prompt').val());
     s.summaryConnectionProfile  = String($('#dmm_summary_profile').val() || '');
+    s.maxInjectionChars        = Math.max(0, parseInt($('#dmm_max_injection_chars').val()) || 0);
     s.includeLorebooksDuringSum = $('#dmm_include_lorebooks').prop('checked');
     s.debugLogging              = $('#dmm_debug_logging').prop('checked');
     setDebugLogging(s.debugLogging);
@@ -385,6 +388,7 @@ async function addSettingsPanel() {
     });
 
     // ── Summarization lorebook inclusion ─────────────────────────────────────
+    $('#dmm_max_injection_chars').on('input', onSettingChanged);
     $('#dmm_include_lorebooks').on('change', onSettingChanged);
 
     $('#dmm_lorebook_filter_select').on('focus', () => {
