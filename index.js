@@ -1,14 +1,15 @@
 import { extension_settings, renderExtensionTemplateAsync, getContext } from '../../../extensions.js';
+import { getPresetManager } from '../../../../scripts/preset-manager.js';
 import { saveSettingsDebounced, eventSource, event_types, getThumbnailUrl } from '../../../../script.js';
 import { Popup, POPUP_TYPE, POPUP_RESULT } from '../../../popup.js';
 import { MODULE_NAME, EXT_NAME, FOLDER_NAME } from './constants.js';
 import './summarizer.js'; // registers DMM.summarize / DMM.buildPrompt on window.DMM
 import { startMMFlow, showManagerPanel, isMMFlowActive } from './ui.js';
 import { rehideGhostMessages, tickMemoryLifespans } from './memory-manager.js';
-import { onBeforeGenerate, clearInjection } from './injector.js';
+import { onBeforeGenerate, clearInjection, hideMessagesUpToRange, restoreHiddenMessages, recoverTempHiddenMessages, logLayerDiagnostic } from './injector.js';
 import { isSummarizing, DEFAULT_GENERATION_PROMPT } from './summarizer.js';
 import { world_names } from '../../../world-info.js';
-import { dmmLog, setDebugLogging, getLogText, clearLog } from './logger.js';
+import { dmmLog, dmmDevLog, setDebugLogging, getLogText, clearLog } from './logger.js';
 
 export { MODULE_NAME, EXT_NAME, FOLDER_NAME };
 
@@ -81,9 +82,15 @@ const DEFAULT_SETTINGS = {
 
     // Summarization profile overrides
     summaryConnectionProfile: '',
+    summaryCompletionPreset: '',
     includeLorebooksDuringSum: false,
     excludedLorebooks: [],          // blocklist of lorebook filenames; empty = include all
+
+    // Summary cleaning (applied at save time)
+    stripReasoningBlocks: true,     // strip prefix…suffix blocks using ST's reasoning config
+    stripStrings: [],               // literal strings to remove from summary before saving
     maxInjectionChars: 0,           // 0 = unlimited; oldest memories dropped first when over cap
+    hideOldMessages: false,         // hide summarized messages from LLM context during generation
 
     // Format template presets (user-saved; built-ins live in BUILTIN_PRESETS)
     templatePresets: [],
@@ -107,6 +114,15 @@ function loadSettings() {
     syncSettingsToUI();
 }
 
+function renderStripTags(tags) {
+    const container = $('#dmm_strip_tags');
+    container.empty();
+    (tags ?? []).forEach((tag, i) => {
+        const pill = $(`<span class="dmm-tag">${$('<span>').text(tag).html()} <span class="dmm-tag-remove fa-solid fa-xmark" data-index="${i}"></span></span>`);
+        container.append(pill);
+    });
+}
+
 function renderLorebookTags(tags) {
     const container = $('#dmm_lorebook_tags');
     container.empty();
@@ -128,6 +144,9 @@ function syncSettingsToUI() {
     $('#dmm_generation_prompt').val(s.generationPrompt);
     $('#dmm_injection_template').val(s.injectionTemplate);
     $('#dmm_max_injection_chars').val(s.maxInjectionChars ?? 0);
+    $('#dmm_hide_old_messages').prop('checked', s.hideOldMessages ?? false);
+    $('#dmm_strip_reasoning').prop('checked', s.stripReasoningBlocks ?? true);
+    renderStripTags(s.stripStrings);
     $('#dmm_include_lorebooks').prop('checked', s.includeLorebooksDuringSum ?? false);
     renderLorebookTags(s.excludedLorebooks);
     $('#dmm_debug_logging').prop('checked', s.debugLogging);
@@ -145,7 +164,10 @@ function onSettingChanged() {
     s.injectionTemplate       = String($('#dmm_injection_template').val());
     s.generationPrompt        = String($('#dmm_generation_prompt').val());
     s.summaryConnectionProfile  = String($('#dmm_summary_profile').val() || '');
+    s.summaryCompletionPreset   = String($('#dmm_summary_preset').val() || '');
     s.maxInjectionChars        = Math.max(0, parseInt($('#dmm_max_injection_chars').val()) || 0);
+    s.hideOldMessages          = $('#dmm_hide_old_messages').prop('checked');
+    s.stripReasoningBlocks     = $('#dmm_strip_reasoning').prop('checked');
     s.includeLorebooksDuringSum = $('#dmm_include_lorebooks').prop('checked');
     s.debugLogging              = $('#dmm_debug_logging').prop('checked');
     setDebugLogging(s.debugLogging);
@@ -172,6 +194,62 @@ function populateSummaryProfileDropdown() {
 
     const saved = getSettings().summaryConnectionProfile;
     if (saved) $select.val(saved);
+}
+
+/**
+ * Infer the completion API identifier from a connection profile object.
+ * Mirrors qvink's CONNECT_API_MAP fallback logic.
+ * Returns undefined if the profile can't be found — getPresetList(undefined)
+ * falls back to the currently active API.
+ */
+function getSummaryProfileApi() {
+    const profileName = String($('#dmm_summary_profile').val() || '');
+    if (!profileName) return undefined;
+
+    const profiles = extension_settings.connectionManager?.profiles ?? [];
+    const profile  = profiles.find(p => p.name === profileName);
+    if (!profile) return undefined;
+
+    dmmDevLog('Summary profile object:', profile);
+
+    // profile.api is the connection identifier (e.g. 'cohere', 'koboldcpp')
+    // getPresetList uses preset-manager keys: all CC → 'openai', all TC → 'textgenerationwebui'
+    if (profile.mode === 'cc') return 'openai';
+    if (profile.mode === 'tc') return 'textgenerationwebui';
+    return undefined;
+}
+
+function applyProfilePreset(profileName) {
+    if (!profileName) return;
+    const profiles = extension_settings.connectionManager?.profiles ?? [];
+    const profile  = profiles.find(p => p.name === profileName);
+    if (!profile?.preset) return;
+    $('#dmm_summary_preset').val(profile.preset);
+    getSettings().summaryCompletionPreset = profile.preset;
+    saveSettingsDebounced();
+}
+
+function populateSummaryPresetDropdown() {
+    const $select  = $('#dmm_summary_preset');
+    const savedVal = $select.val() || getSettings().summaryCompletionPreset || '';
+    $select.empty();
+    $select.append('<option value="">(use current preset)</option>');
+
+    try {
+        const api = getSummaryProfileApi();
+        const { preset_names } = getPresetManager().getPresetList(api);
+        const names = Array.isArray(preset_names) ? preset_names : Object.keys(preset_names);
+        names
+            .slice()
+            .sort((a, b) => a.localeCompare(b))
+            .forEach(n => $select.append(`<option value="${n}">${n}</option>`));
+        dmmDevLog(`Preset dropdown populated for api=${api ?? 'current'}: ${names.length} presets`);
+    } catch (e) {
+        $select.append('<option value="" disabled>— presets unavailable —</option>');
+        console.warn(`[${EXT_NAME}] Could not populate preset dropdown:`, e);
+    }
+
+    if (savedVal) $select.val(savedVal);
 }
 
 // ── Avatar selector ──────────────────────────────────────────────────────────
@@ -307,7 +385,14 @@ async function addSettingsPanel() {
     // ── Format templates ─────────────────────────────────────────────────────
     $('#dmm_generation_prompt').on('input', onSettingChanged);
     $('#dmm_injection_template').on('input', onSettingChanged);
-    $('#dmm_summary_profile').on('change', onSettingChanged);
+    $('#dmm_summary_profile').on('change', function () {
+        onSettingChanged();
+        populateSummaryPresetDropdown();
+        // Always pull the preset stored in the selected profile
+        applyProfilePreset(String($('#dmm_summary_profile').val() || ''));
+    });
+    $('#dmm_summary_preset').on('focus', populateSummaryPresetDropdown);
+    $('#dmm_summary_preset').on('change', onSettingChanged);
 
     $('#dmm_template_preset_select').on('change', function () {
         const val = $(this).val();
@@ -389,6 +474,32 @@ async function addSettingsPanel() {
 
     // ── Summarization lorebook inclusion ─────────────────────────────────────
     $('#dmm_max_injection_chars').on('input', onSettingChanged);
+    $('#dmm_hide_old_messages').on('change', onSettingChanged);
+    $('#dmm_strip_reasoning').on('change', onSettingChanged);
+
+    $('#dmm_strip_input').on('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const val = $(this).val().trim();
+        if (!val) return;
+        const s = getSettings();
+        s.stripStrings = s.stripStrings ?? [];
+        if (!s.stripStrings.includes(val)) {
+            s.stripStrings.push(val);
+            renderStripTags(s.stripStrings);
+            saveSettingsDebounced();
+        }
+        $(this).val('');
+    });
+
+    $('#dmm_strip_tags').on('click', '.dmm-tag-remove', function () {
+        const idx = parseInt($(this).data('index'));
+        const s = getSettings();
+        s.stripStrings.splice(idx, 1);
+        renderStripTags(s.stripStrings);
+        saveSettingsDebounced();
+    });
+
     $('#dmm_include_lorebooks').on('change', onSettingChanged);
 
     $('#dmm_lorebook_filter_select').on('focus', () => {
@@ -486,6 +597,8 @@ jQuery(async function () {
     loadSettings();
     addWandMenuItems();
     populateSummaryProfileDropdown();
+    populateSummaryPresetDropdown();
+    applyProfilePreset(getSettings().summaryConnectionProfile);
 
     // Migrate legacy ghost messages and rebuild swipes after any chat load/switch.
     eventSource.on(event_types.CHAT_CHANGED, rehideGhostMessages);
@@ -505,14 +618,34 @@ jQuery(async function () {
             dmmLog('GENERATE_BEFORE_COMBINE_PROMPTS: skipping tick (MM flow active)', { char: char?.name });
         }
         onBeforeGenerate(getSettings());
+
+        if (getSettings().hideOldMessages && char?.name && !isMMFlowActive() && isSummarizing === 0) {
+            hideMessagesUpToRange(char.name);
+            logLayerDiagnostic(char.name);
+        }
     });
 
-    // Strip any DMM injection that snuck into the assembled prompt during summarization.
-    // generateRaw fires GENERATE_AFTER_COMBINE_PROMPTS — other extensions could still inject.
+    // Restore any messages hidden during context assembly, then clear stray injections.
     eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, (data) => {
+        try {
+            restoreHiddenMessages();
+        } catch (e) {
+            console.error(`[${EXT_NAME}] Failed to restore hidden messages:`, e);
+            toastr.warning('DMM: Could not restore hidden messages. Press F5 if the chat looks wrong.', 'Dragon Memories Manager');
+        }
+
         if (isSummarizing > 0) {
             dmmLog('GENERATE_AFTER_COMBINE_PROMPTS: clearing stray injections (isSummarizing)');
             clearInjection();
+        }
+    });
+
+    // Startup recovery — unhide any messages left over from a crashed/interrupted session.
+    eventSource.on(event_types.CHAT_CHANGED, () => {
+        const recovered = recoverTempHiddenMessages();
+        if (recovered > 0) {
+            dmmLog(`Startup recovery: restored ${recovered} temporarily hidden messages`);
+            toastr.info(`DMM restored ${recovered} temporarily hidden message${recovered > 1 ? 's' : ''} from a previous session. If the chat looks wrong, press F5.`, 'Dragon Memories Manager');
         }
     });
 

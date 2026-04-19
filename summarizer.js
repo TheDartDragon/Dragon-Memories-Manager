@@ -6,6 +6,8 @@
 //   DMM.summarize('Ivrene', 'markers')   // requires markers set first
 
 import { generateRaw, max_context, setCharacterId, this_chid } from '../../../../script.js';
+import { getPresetManager } from '../../../../scripts/preset-manager.js';
+import { power_user } from '../../../../scripts/power-user.js';
 import { getContext } from '../../../extensions.js';
 import { checkWorldInfo, world_info_include_names } from '../../../world-info.js';
 import { EXT_NAME } from './constants.js';
@@ -132,54 +134,83 @@ async function getActivatedLorebookContent(messages, charName, excludedLorebooks
     }
 }
 
-// ── Profile swap ─────────────────────────────────────────────────────────────
+// ── Environment swap (profile + preset) ─────────────────────────────────────
 
 /**
- * Run `fn` while optionally swapped to the user's summarization connection
- * profile, restoring the original profile afterward.
+ * Run `fn` while optionally swapped to a summarization connection profile
+ * and/or completion preset, restoring both afterward.
  *
- * If no summary profile is configured, or if the connection-manager slash
- * command isn't available, `fn` runs with the current profile unchanged.
+ * Order matters (per qvink): save preset BEFORE swapping profile, because
+ * a profile change reloads available presets. Restore profile BEFORE preset.
  *
- * @param {string} summaryProfileName  from extension settings (empty = no swap)
- * @param {Function} fn                async function to run inside the swap
+ * @param {string}   summaryProfileName  connection profile name (empty = no swap)
+ * @param {string}   summaryPresetName   completion preset name (empty = no swap)
+ * @param {Function} fn                  async function to run inside the swap
  * @returns {Promise<*>}
  */
-async function withSummaryProfile(summaryProfileName, fn) {
+async function withSummaryEnvironment(summaryProfileName, summaryPresetName, fn) {
     const ctx        = getContext();
     const profileCmd = ctx.SlashCommandParser?.commands?.['profile'];
 
-    if (!summaryProfileName || !profileCmd) {
-        if (summaryProfileName && !profileCmd) {
-            console.warn(`[${EXT_NAME}] Connection Manager not available — running with current profile`);
+    // 1. Save current preset BEFORE any profile swap
+    let currentPreset = null;
+    if (summaryPresetName) {
+        try {
+            currentPreset = getPresetManager().getSelectedPresetName();
+        } catch (e) {
+            console.warn(`[${EXT_NAME}] Could not read current preset:`, e);
         }
-        return await fn();
     }
 
+    // 2. Swap connection profile
     let previousProfile = null;
-    try {
-        previousProfile = await profileCmd.callback({}, '');
-    } catch (e) {
-        console.warn(`[${EXT_NAME}] Could not read current connection profile:`, e);
+    let profileSwapped  = false;
+    if (summaryProfileName) {
+        if (!profileCmd) {
+            console.warn(`[${EXT_NAME}] Connection Manager not available — skipping profile swap`);
+        } else {
+            try { previousProfile = await profileCmd.callback({}, ''); } catch (e) { /* ignore */ }
+            try {
+                await profileCmd.callback({ await: 'true' }, summaryProfileName);
+                dmmLog(`Switched to summary profile: "${summaryProfileName}"`);
+                profileSwapped = true;
+            } catch (e) {
+                console.warn(`[${EXT_NAME}] Could not switch to summary profile "${summaryProfileName}":`, e);
+            }
+        }
     }
 
-    try {
-        await profileCmd.callback({ await: 'true' }, summaryProfileName);
-        dmmLog(`Switched to summary profile: "${summaryProfileName}"`);
-    } catch (e) {
-        console.warn(`[${EXT_NAME}] Could not switch to summary profile "${summaryProfileName}" — running with current profile:`, e);
-        return await fn();
+    // 3. Swap completion preset
+    let presetSwapped = false;
+    if (summaryPresetName && currentPreset !== null) {
+        try {
+            await ctx.executeSlashCommandsWithOptions(`/preset ${summaryPresetName}`);
+            dmmLog(`Switched to summary preset: "${summaryPresetName}"`);
+            presetSwapped = true;
+        } catch (e) {
+            console.warn(`[${EXT_NAME}] Could not switch to summary preset "${summaryPresetName}":`, e);
+        }
     }
 
+    // 4. Run, then restore in finally
     try {
         return await fn();
     } finally {
-        if (previousProfile && previousProfile !== '<None>') {
+        // Restore profile first, then preset
+        if (profileSwapped && previousProfile && previousProfile !== '<None>') {
             try {
                 await profileCmd.callback({ await: 'false' }, previousProfile);
                 dmmLog(`Restored profile: "${previousProfile}"`);
             } catch (e) {
                 console.warn(`[${EXT_NAME}] Could not restore profile "${previousProfile}":`, e);
+            }
+        }
+        if (presetSwapped && currentPreset) {
+            try {
+                await ctx.executeSlashCommandsWithOptions(`/preset ${currentPreset}`);
+                dmmLog(`Restored preset: "${currentPreset}"`);
+            } catch (e) {
+                console.warn(`[${EXT_NAME}] Could not restore preset "${currentPreset}":`, e);
             }
         }
     }
@@ -215,6 +246,7 @@ export async function generateMemorySummary(charName, filteredMessages, settings
     const promptTemplate   = settings?.generationPrompt || DEFAULT_GENERATION_PROMPT;
     const prompt           = buildPrompt(charName, filteredMessages, promptTemplate);
     const summaryProfile   = settings?.summaryConnectionProfile || '';
+    const summaryPreset    = settings?.summaryCompletionPreset || '';
     const includeLorebooks  = settings?.includeLorebooksDuringSum ?? false;
     const excludedLorebooks = settings?.excludedLorebooks ?? [];
 
@@ -228,7 +260,7 @@ export async function generateMemorySummary(charName, filteredMessages, settings
     isSummarizing++;
     let result;
     try {
-        result = await withSummaryProfile(summaryProfile, () =>
+        result = await withSummaryEnvironment(summaryProfile, summaryPreset, () =>
             generateRaw({ prompt, systemPrompt: systemPrompt || undefined }),
         );
     } finally {
@@ -269,6 +301,43 @@ export async function collectFilterAndSummarize(charName, mode, rangeStr = '', s
 
     const summary = await generateMemorySummary(charName, messages, settings);
     return { summary, startIndex, endIndex, messageCount: messages.length };
+}
+
+// ── Summary cleaning ─────────────────────────────────────────────────────────
+
+/**
+ * Strip reasoning blocks and custom strings from a generated summary.
+ * Called at save time — before token count is computed.
+ *
+ * @param {string} text     raw summary from LLM
+ * @param {object} settings extension settings
+ * @returns {string}
+ */
+export function cleanSummary(text, settings) {
+    let result = text;
+
+    // Strip reasoning blocks using ST's configured prefix/suffix
+    if (settings?.stripReasoningBlocks !== false) {
+        const prefix = power_user?.reasoning?.prefix;
+        const suffix = power_user?.reasoning?.suffix;
+        if (prefix && suffix) {
+            const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            result = result.replace(new RegExp(esc(prefix) + '[\\s\\S]*?' + esc(suffix), 'g'), '');
+            dmmDevLog(`cleanSummary: stripped reasoning blocks (prefix="${prefix}", suffix="${suffix}")`);
+        }
+    }
+
+    // Strip custom strings literally
+    const stripStrings = settings?.stripStrings ?? [];
+    for (const s of stripStrings) {
+        if (!s) continue;
+        result = result.split(s).join('');
+    }
+    if (stripStrings.length) {
+        dmmDevLog(`cleanSummary: stripped ${stripStrings.length} custom string(s)`);
+    }
+
+    return result.trim();
 }
 
 // ── Dev console helpers ──────────────────────────────────────────────────────

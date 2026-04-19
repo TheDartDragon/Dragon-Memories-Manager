@@ -31,6 +31,17 @@
                     class="text_pole" style="width:80px" value="20" />
                 <small class="opacity50p">of this character's messages before expiry</small>
             </div>
+            <div class="flex-container flexGap5 alignItemsCenter" style="margin-top:6px">
+                <label for="dmm_max_injection_chars">Injection cap</label>
+                <input id="dmm_max_injection_chars" type="number" min="0"
+                    class="text_pole" style="width:80px" value="0" />
+                <small class="opacity50p">max chars injected · 0 = unlimited · oldest dropped first</small>
+            </div>
+            <div class="flex-container flexGap5 alignItemsCenter" style="margin-top:6px">
+                <input id="dmm_hide_old_messages" type="checkbox" />
+                <label for="dmm_hide_old_messages">Hide summarized messages from LLM context</label>
+            </div>
+            <small class="opacity50p">Hides messages already covered by active memories during generation so the LLM only sees the summary. Restored immediately after. Works cleanly alongside qvink (medium-term) for a three-layer memory stack.</small>
 
             <hr class="sysHR" />
 
@@ -70,16 +81,10 @@
                 </div>
             </div>
 
-            <div class="flex-container flexFlowColumn flexGap5" style="margin-top:10px">
-                <label for="dmm_generation_prompt">Scribe prompt</label>
-                <textarea id="dmm_generation_prompt" class="text_pole textarea_compact" rows="8"></textarea>
-                <small class="opacity50p"><code>{{char}}</code> — character name &nbsp;·&nbsp; <code>{{transcript}}</code> — filtered chat transcript</small>
-            </div>
-
             <div class="flex-container flexFlowColumn flexGap5" style="margin-top:8px">
                 <label for="dmm_injection_template">Context wrapper</label>
                 <textarea id="dmm_injection_template" class="text_pole textarea_compact" rows="2"></textarea>
-                <small class="opacity50p"><code>{{summary}}</code> — generated memory &nbsp;·&nbsp; <code>{{char}}</code> — character name &nbsp;·&nbsp; e.g. <code>&lt;memory&gt;{{summary}}&lt;/memory&gt;</code></small>
+                <small class="opacity50p"><code>{{summary}}</code> — memory text &nbsp;·&nbsp; <code>{{char}}</code> — character name &nbsp;·&nbsp; e.g. <code>&lt;memory&gt;{{summary}}&lt;/memory&gt;</code></small>
             </div>
 
             <hr class="sysHR" />
@@ -90,9 +95,19 @@
             <div class="flex-container flexFlowColumn flexGap5">
                 <label for="dmm_summary_profile">Connection profile</label>
                 <select id="dmm_summary_profile" class="text_pole">
-                    <option value="">(use current)</option>
+                    <option value="">(use current profile)</option>
                 </select>
-                <small class="opacity50p">Switch to a different model for generation, then restore. Requires Connection Manager.</small>
+                <label for="dmm_summary_preset" style="margin-top:6px">Completion preset</label>
+                <select id="dmm_summary_preset" class="text_pole">
+                    <option value="">(use current preset)</option>
+                </select>
+                <small class="opacity50p">Switch to a dedicated model and sampler settings for scribe generation, then restore. Connection profile requires Connection Manager.</small>
+            </div>
+
+            <div class="flex-container flexFlowColumn flexGap5" style="margin-top:10px">
+                <label for="dmm_generation_prompt">Scribe prompt</label>
+                <textarea id="dmm_generation_prompt" class="text_pole textarea_compact" rows="8"></textarea>
+                <small class="opacity50p"><code>{{char}}</code> — character name &nbsp;·&nbsp; <code>{{transcript}}</code> — filtered chat transcript</small>
             </div>
 
             <div class="flex-container flexFlowColumn flexGap5" style="margin-top:10px">
@@ -112,6 +127,21 @@
                         <button id="dmm_lorebook_filter_add" class="menu_button interactable">Add</button>
                     </div>
                     <small class="opacity50p">Lorebooks listed here are blocked from the scribe's context. Empty = all active lorebooks included.</small>
+                </div>
+            </div>
+
+            <div class="flex-container flexFlowColumn flexGap5" style="margin-top:10px">
+                <div class="flex-container flexGap5 alignItemsCenter">
+                    <input id="dmm_strip_reasoning" type="checkbox" />
+                    <label for="dmm_strip_reasoning">Strip reasoning blocks from summary</label>
+                </div>
+                <small class="opacity50p">Removes <code>prefix…suffix</code> blocks using ST's reasoning tags (AI Response Formatting → Reasoning prefix/suffix). Applied at save time.</small>
+                <div class="flex-container flexFlowColumn flexGap5" style="margin-top:6px">
+                    <label>Strip strings <small class="opacity50p">(removed literally, at save time)</small></label>
+                    <div id="dmm_strip_tags" class="dmm-tag-container"></div>
+                    <input id="dmm_strip_input" type="text" class="text_pole"
+                        placeholder="Type string, press Enter to add" />
+                    <small class="opacity50p">For stripping reply prefixes or stray tags your model outputs.</small>
                 </div>
             </div>
 

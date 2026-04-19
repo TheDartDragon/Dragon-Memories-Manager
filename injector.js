@@ -6,6 +6,120 @@ import { MODULE_NAME } from './constants.js';
 import { getCharMemories } from './memory-manager.js';
 import { dmmLog, dmmDevLog } from './logger.js';
 
+// ── Temporary message hiding ──────────────────────────────────────────────────
+
+// Indices of messages we have temporarily set is_system=true during this generation.
+let _tempHiddenIndices = [];
+
+/**
+ * Temporarily hide all messages up to and including the highest active memory
+ * end index for `charName`. Uses is_system=true so ST excludes them from context.
+ * Each hidden message is tagged with extra.dmm_temp_hidden so we can restore
+ * exactly the messages we touched (avoids clobbering real system messages).
+ *
+ * Call restoreHiddenMessages() after prompt assembly to undo.
+ */
+export function hideMessagesUpToRange(charName) {
+    const ctx      = getContext();
+    const memories = getCharMemories(charName).filter(m => m.active);
+    dmmDevLog(`hideMessagesUpToRange("${charName}"): ${memories.length} active memories`, memories.map(m => ({ range: m.message_range, id: m.id })));
+    if (!memories.length) return;
+
+    let maxEnd = -1;
+    for (const m of memories) {
+        const end = parseInt((m.message_range || '').split('-')[1], 10);
+        if (!isNaN(end) && end > maxEnd) maxEnd = end;
+    }
+    dmmDevLog(`hideMessagesUpToRange: maxEnd=${maxEnd}, chat.length=${ctx.chat.length}`);
+    if (maxEnd < 0) return;
+
+    _tempHiddenIndices = [];
+    for (let i = 0; i <= maxEnd && i < ctx.chat.length; i++) {
+        const msg = ctx.chat[i];
+        if (!msg) continue;
+        if (msg.is_system || msg.extra?.dmm_temp_hidden) continue;
+        msg.is_system = true;
+        if (!msg.extra) msg.extra = {};
+        msg.extra.dmm_temp_hidden = true;
+        _tempHiddenIndices.push(i);
+    }
+
+    if (_tempHiddenIndices.length) {
+        dmmLog(`Hide: masked ${_tempHiddenIndices.length} messages (0–${maxEnd}) for "${charName}"`);
+        dmmDevLog(`Hide indices: [${_tempHiddenIndices.join(', ')}]`);
+    }
+}
+
+/**
+ * Restore all messages hidden by the current generation pass.
+ * Safe to call even if hideMessagesUpToRange was never called.
+ * @returns {number} count of messages restored
+ */
+export function restoreHiddenMessages() {
+    const ctx = getContext();
+    let restored = 0;
+    for (const i of _tempHiddenIndices) {
+        const msg = ctx.chat[i];
+        if (msg?.extra?.dmm_temp_hidden) {
+            msg.is_system = false;
+            delete msg.extra.dmm_temp_hidden;
+            restored++;
+        }
+    }
+    _tempHiddenIndices = [];
+    if (restored) dmmLog(`Restore: unmasked ${restored} messages`);
+    return restored;
+}
+
+/**
+ * Log a three-layer breakdown: DMM-hidden | qvink-summarized | raw.
+ * Also logs qvink presence and include_system_messages setting.
+ * Dev-only (dmmDevLog). Called after hideMessagesUpToRange.
+ */
+export function logLayerDiagnostic(charName) {
+    const ctx = getContext();
+    if (!ctx?.chat) return;
+
+    // Detect qvink by presence of extra.qvink_memory on any message
+    const qvinkPresent = ctx.chat.some(m => m?.extra?.qvink_memory !== undefined);
+    const qvinkSettings = window.extension_settings?.['qvink_memory'];
+    dmmDevLog(`Layer diagnostic for "${charName}" — qvink: ${qvinkPresent ? 'present' : 'not found'}${qvinkSettings ? `, include_system_messages: ${qvinkSettings.include_system_messages ?? false}` : ''}`);
+
+    const hidden = [], qvink = [], raw = [];
+    for (let i = 0; i < ctx.chat.length; i++) {
+        const msg = ctx.chat[i];
+        if (msg?.extra?.dmm_temp_hidden) {
+            hidden.push(i);
+        } else if (msg?.extra?.qvink_memory?.include != null) {
+            // include: true = long-term summary, 'short' = short-term summary
+            qvink.push(i);
+        } else {
+            raw.push(i);
+        }
+    }
+
+    dmmDevLog(`Layers: DMM-hidden=[${hidden[0] ?? '—'}–${hidden.at(-1) ?? '—'}] (${hidden.length}) | qvink-summarized=[${qvink[0] ?? '—'}–${qvink.at(-1) ?? '—'}] (${qvink.length}) | raw=[${raw[0] ?? '—'}–${raw.at(-1) ?? '—'}] (${raw.length})`);
+}
+
+/**
+ * Startup recovery — scan the entire chat for any messages left hidden by a
+ * previous session that was interrupted before restore could run (crash, reload,
+ * etc.). Returns count of messages recovered so the caller can warn the user.
+ */
+export function recoverTempHiddenMessages() {
+    const ctx = getContext();
+    if (!ctx?.chat) return 0;
+    let recovered = 0;
+    for (const msg of ctx.chat) {
+        if (msg?.extra?.dmm_temp_hidden) {
+            msg.is_system = false;
+            delete msg.extra.dmm_temp_hidden;
+            recovered++;
+        }
+    }
+    return recovered;
+}
+
 export const INJECT_KEY = `${MODULE_NAME}_memories`;
 
 // ── Position map ─────────────────────────────────────────────────────────────
@@ -84,7 +198,7 @@ export function onBeforeGenerate(settings) {
 
     const charName = char.name;
     const memories = getCharMemories(charName);
-    const active   = memories.filter(m => m.active);
+    let active     = memories.filter(m => m.active);
     if (!active.length) return;
 
     const template        = settings?.injectionTemplate || '{{summary}}';

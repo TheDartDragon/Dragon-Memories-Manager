@@ -13,7 +13,7 @@ import { getTokenCount } from '../../../../scripts/tokenizers.js';
 import { getMessageTimeStamp } from '../../../RossAscends-mods.js';
 import { uuidv4 } from '../../../utils.js';
 import { MODULE_NAME, EXT_NAME, FOLDER_NAME } from './constants.js';
-import { collectFilterAndSummarize } from './summarizer.js';
+import { collectFilterAndSummarize, cleanSummary } from './summarizer.js';
 import { getSettings } from './index.js';
 import {
     addMemoryEntry,
@@ -249,9 +249,10 @@ async function runBulkMemories(chars, selectorMsgIdx) {
             // tool, not an incremental one.  This avoids stale _lastSummarizedAt
             // values silently producing an empty range.
             const fullRange = `0-${ctx.chat.length - 1}`;
-            const { summary, startIndex, endIndex } = await collectFilterAndSummarize(
+            const { summary: rawSummary, startIndex, endIndex } = await collectFilterAndSummarize(
                 charName, 'manual', fullRange, settings,
             );
+            const summary = cleanSummary(rawSummary, settings);
 
             const entry = {
                 id:                 uuidv4(),
@@ -687,7 +688,8 @@ async function saveMemory(reviewMsgIdx) {
     const ctx = getContext();
 
     // Read from chat array — captures any native edits the user made
-    const summary = ctx.chat[reviewMsgIdx]?.mes || '';
+    const rawSummary = ctx.chat[reviewMsgIdx]?.mes || '';
+    const summary    = cleanSummary(rawSummary, getSettings());
 
     // created_at_message: index of the last REAL message (the one just before
     // the first MM message).  Ghost messages are about to be removed, so
