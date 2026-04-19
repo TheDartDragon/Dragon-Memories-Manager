@@ -21,6 +21,7 @@ Each character remembers only what they personally witnessed — based on the [P
 - [Lifespan](#lifespan)
 - [Presets](#presets)
 - [Lorebook Export](#lorebook-export)
+- [qvink Integration](#qvink-integration)
 - [Known Limitations](#known-limitations)
 - [Troubleshooting](#troubleshooting)
 - [File Structure](#file-structure)
@@ -86,16 +87,30 @@ The extension generates and saves a full-history memory for every character in t
 
 ## Features
 
+### Memory creation
 - **Per-character isolation** — each character's memories are stored and injected separately; one character's memories never appear in another's context.
 - **Presence filtering** — only messages where the target character was actually present are included in the summarization transcript.
 - **Three range selection modes** — manual range input, automatic from last summary, or click-to-mark directly in the chat.
-- **All Remember All** — one-click baseline: generates and saves a full-history memory for every character in the group with default settings. No decisions required — useful for a quick sanity-check or to establish a starting point before tweaking individual memories.
+- **All Remember All** — one-click baseline: generates and saves a full-history memory for every character in the group with default settings.
 - **In-chat MM flow** — the Memory Manager conducts the creation flow as a pseudo-character in the chat, using SillyTavern's native swipe and edit UI.
+- **Lorebook context during summarization** — optionally runs ST's keyword matching against the transcript and feeds matched lorebook entries to the scribe as background context. Per-lorebook blocklist available.
+- **Summary cleaning** — strips reasoning blocks (`<think>…</think>` or any ST-configured prefix/suffix) and custom literal strings from generated summaries at save time, before the token count is recorded.
+
+### Memory injection
 - **Lifespan** — memories expire automatically after a configurable number of the character's own generated messages.
 - **Memory intensity** — per-memory injection position override, so a pivotal scene can inject deeper in the prompt than a routine one.
+- **Injection cap** — optional character limit on total injected memory per character; oldest memories are dropped first when over the cap.
+- **Hide summarized messages** — optionally hides raw messages already covered by active memories during generation, so the LLM sees the summary *instead of* the original messages. Enables a clean three-layer stack alongside [qvink MessageSummarize](#qvink-integration).
+
+### Management
 - **Memory Manager panel** — view, edit, reactivate, reassign, or export all memories for any character in the current chat.
+- **Token count** — each saved memory records its token count at save time and displays it in the Manager panel.
+- **Staleness warning** — memory cards show a badge when the summarized message range has been deleted or rolled back.
 - **Lorebook export** — export any memory to a World Info lorebook with character filter and injection position preserved.
-- **Connection profile swap** — automatically switches to a dedicated summarization profile before generating a summary, then restores the original.
+
+### Summarization settings
+- **Connection profile swap** — switches to a dedicated connection profile before generating a summary, then restores the original. Requires Connection Manager.
+- **Completion preset swap** — switches to a dedicated completion preset (sampler settings) for summarization, then restores. Auto-fills from the selected connection profile's stored preset.
 - **Built-in presets** — PList, Summary, and Tracker prompt and injection presets out of the box.
 - **Debug log** — a ring buffer captures all internal events; copy to clipboard for bug reports.
 
@@ -147,22 +162,49 @@ After injection, the generating character's active memories are ticked: `char_me
 
 Found in the **Extensions** tab under **Dragon Memories Manager**.
 
+**Memory Behavior**
+
+| Setting | Description |
+|---|---|
+| **Default Lifespan** | How many of the character's own generated messages a new memory lives for. Default: 20. |
+| **Injection cap** | Maximum total characters injected per character per generation. 0 = unlimited. Oldest memories are dropped first when over the cap. |
+| **Hide summarized messages** | During generation, hides raw messages already covered by active memories so the LLM only sees the summary. Restored immediately after prompt assembly. See [qvink Integration](#qvink-integration). |
+
+**Context Injection**
+
+| Setting | Description |
+|---|---|
+| **Preset selector** | Load a built-in or user-saved preset (applies scribe prompt + context wrapper + injection settings at once). |
+| **Save As / Delete / Restore Defaults** | Manage user presets. Built-in presets (PList, Summary, Tracker) cannot be deleted. |
+| **Position in context** | Where memories are inserted in the prompt. See [Injection Positions](#injection-positions). |
+| **Depth / Role** | Message depth and prompt role for the `At Depth` position. |
+| **Context wrapper** | Template for each injected memory block. `{{summary}}` = memory text, `{{char}}` = character name. |
+
+**Summarization**
+
+| Setting | Description |
+|---|---|
+| **Connection profile** | Switch to a dedicated connection profile before generating a summary, then restore. Requires Connection Manager. Leave empty to use the current profile. |
+| **Completion preset** | Switch to a dedicated completion preset (sampler settings) for summarization, then restore. Auto-fills from the selected connection profile's stored preset. |
+| **Scribe prompt** | The prompt sent to the LLM to produce the memory. `{{char}}` and `{{transcript}}` are replaced at generation time. |
+| **Include lorebook context** | Runs ST's keyword matching against the transcript and feeds matched entries to the scribe as background context. |
+| **Exclude lorebooks** | Tag-based blocklist — lorebooks added here are filtered out from the scribe's context even when inclusion is enabled. |
+| **Strip reasoning blocks** | Removes `prefix…suffix` blocks using ST's configured reasoning tags (AI Response Formatting → Reasoning prefix/suffix). Applied at save time. |
+| **Strip strings** | Literal strings to remove from the summary before saving. Useful for stripping model-specific reply prefixes or stray tags. |
+
+**Manager Character**
+
 | Setting | Description |
 |---|---|
 | **Manager Name** | Display name for the Memory Manager pseudo-character. Default: `Memories Manager`. |
 | **Manager Avatar** | Upload an image or select from existing character cards. Uses that card's name and avatar only — card content is ignored. |
-| **Default Lifespan** | How many of the character's own generated messages a new memory lives for. Default: 20. |
-| **Injection Position** | Where memories are inserted in the prompt. See [Injection Positions](#injection-positions). |
-| **Depth** | Message depth for the `At Depth` position. |
-| **Role** | Prompt role for the `At Depth` position: System, User, or Assistant. |
-| **Injection Template** | Template for each injected memory block. `{{summary}}` is replaced with the memory text; `{{char}}` with the character name. |
-| **Generation Prompt** | The prompt sent to the LLM to produce the memory. `{{char}}` and `{{transcript}}` are replaced at generation time. |
-| **Summarization Profile** | A Connection Profile to switch to before generating a summary. Restored automatically afterward. If left empty, the current profile is used. |
-| **Preset selector** | Load a built-in or user-saved preset (applies prompt + template + injection settings at once). |
-| **Save As / Delete** | Save current settings as a named preset, or delete a user-saved one. Built-in presets cannot be deleted. |
-| **Restore Defaults** | Reset to the built-in PList preset. |
+
+**Debug**
+
+| Setting | Description |
+|---|---|
 | **Debug Logging** | Print internal events to the browser console. |
-| **Copy Log / Clear Log** | Copy or clear the internal ring buffer. Useful for bug reports — the buffer retains 500 entries even without debug logging enabled. |
+| **Copy Log / Clear Log** | Copy or clear the internal ring buffer. The buffer retains 500 entries regardless of whether logging is enabled. |
 
 ---
 
@@ -269,6 +311,22 @@ The memory remains active in the chat after export — exporting does not deacti
 
 ---
 
+## qvink Integration
+
+DMM works cleanly alongside [qvink MessageSummarize](https://github.com/qvink/SillyTavern-MessageSummarize) to create a three-layer memory stack per character:
+
+```
+[ DMM long-term memory   ]  ← injected before chat history; covers messages 0–N
+[ qvink medium summaries ]  ← rolling summaries of messages N+1 to ~depth 6
+[ Raw recent messages    ]  ← last few messages unsummarized
+```
+
+**How it works:** Enable **Hide summarized messages** in DMM. On each generation, DMM sets `is_system=true` on messages already covered by active memories. qvink skips system messages by default (`include_system_messages: false`), so it naturally picks up only from where DMM left off. No configuration coordination required — the layers compose automatically.
+
+**Result:** The LLM sees a continuous timeline of decreasing detail — structured long-term memories, medium-term rolling summaries, and full recent messages — with no double-coverage or redundancy.
+
+---
+
 ## Known Limitations
 
 - **Presence is required for correct filtering.** Without it, every character gets an unfiltered summary of all messages in the range.
@@ -311,7 +369,7 @@ Dragon-Memories-Manager/
 ├── index.js               Entry point: settings panel, event hooks, wand menu
 ├── ui.js                  MM in-chat creation flow + Manager panel
 ├── memory-manager.js      Storage, message collection, presence filter, lifespan
-├── summarizer.js          Prompt building, generateQuietPrompt, profile swap
+├── summarizer.js          Prompt building, generateRaw, environment swap (profile + preset)
 ├── injector.js            setExtensionPrompt integration, slot grouping
 ├── constants.js           MODULE_NAME, EXT_NAME, FOLDER_NAME
 ├── logger.js              Conditional debug logger with ring buffer
@@ -340,6 +398,7 @@ Stored in `chat_metadata.scene_memory` (persisted in the chat `.jsonl` file).
       "char_message_count":  7,
       "active":              true,
       "format_template":     "plist",
+      "token_count":         312,        // recorded at save time using active tokenizer
 
       // Per-memory injection override (null = use global setting)
       "injectionPosition":   "at_depth",
@@ -371,6 +430,13 @@ Stored in `chat_metadata.scene_memory` (persisted in the chat `.jsonl` file).
   "injectionTemplate":        "{{summary}}",
   "generationPrompt":         "...",
   "summaryConnectionProfile": "",
+  "summaryCompletionPreset":  "",
+  "includeLorebooksDuringSum": false,
+  "excludedLorebooks":        [],
+  "maxInjectionChars":        0,
+  "hideOldMessages":          false,
+  "stripReasoningBlocks":     true,
+  "stripStrings":             [],
   "templatePresets":          [],
   "lastLorebookPerChar":      {}
 }
