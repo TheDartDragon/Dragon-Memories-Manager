@@ -53,11 +53,16 @@ let _devFlushTimer = null;
  * Auto-flushes session buffer to disk 1 s after the last call.
  */
 export function dmmDevLog(...args) {
-    if (!localStorage.getItem('DMM_DEV')) return;
     const text = args
         .map(a => (a !== null && typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)))
         .join(' ');
-    const line = `[${new Date().toISOString()}] ${text}`;
+    const line = `[${new Date().toISOString()}] [DEV] ${text}`;
+
+    // Always visible in the UI log buffer so testers can copy without file access
+    _logBuffer.push(line);
+    if (_logBuffer.length > MAX_BUFFER) _logBuffer.shift();
+
+    if (!localStorage.getItem('DMM_DEV')) return;
     _devBuffer.push(line);
     console.log('[DMM:DEV]', ...args);
     _scheduleDevFlush();

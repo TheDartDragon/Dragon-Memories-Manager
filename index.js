@@ -108,6 +108,22 @@ export function getSettings() {
     return extension_settings[MODULE_NAME];
 }
 
+/**
+ * Returns the name of the character currently being generated for.
+ * ctx.characterId is null in group chats, so we read the last chat message
+ * instead — ST adds the generating character's (empty) message to ctx.chat
+ * before firing GENERATE_BEFORE_COMBINE_PROMPTS.
+ */
+function getGeneratingCharName() {
+    const ctx = getContext();
+    if (ctx.groupId) {
+        const last = ctx.chat?.at(-1);
+        if (last && !last.is_user && !last.is_system) return last.name ?? null;
+        return null;
+    }
+    return ctx.characters[ctx.characterId]?.name ?? null;
+}
+
 function loadSettings() {
     extension_settings[MODULE_NAME] = Object.assign({}, DEFAULT_SETTINGS, extension_settings[MODULE_NAME]);
     setDebugLogging(extension_settings[MODULE_NAME].debugLogging);
@@ -536,6 +552,15 @@ async function addSettingsPanel() {
     // ── Debug ────────────────────────────────────────────────────────────────
     $('#dmm_debug_logging').on('change', onSettingChanged);
 
+    function refreshLogTextarea() {
+        const text = getLogText();
+        $('#dmm_log_textarea').val(text || '(buffer empty)');
+        const ta = document.getElementById('dmm_log_textarea');
+        if (ta) ta.scrollTop = ta.scrollHeight;
+    }
+
+    $('#dmm_refresh_log').on('click', refreshLogTextarea);
+
     $('#dmm_copy_log').on('click', () => {
         const text = getLogText();
         if (!text) { toastr.info('Log buffer is empty.', EXT_NAME); return; }
@@ -552,8 +577,11 @@ async function addSettingsPanel() {
 
     $('#dmm_clear_log').on('click', () => {
         clearLog();
+        $('#dmm_log_textarea').val('(buffer empty)');
         toastr.info('Log buffer cleared.', EXT_NAME);
     });
+
+    refreshLogTextarea();
 }
 
 // ── Wand menu items ──────────────────────────────────────────────────────────
@@ -610,18 +638,18 @@ jQuery(async function () {
             clearInjection();
             return;
         }
-        const ctx  = getContext();
-        const char = ctx.characters[ctx.characterId];
+        const charName = getGeneratingCharName();
+        dmmDevLog(`GENERATE_BEFORE_COMBINE_PROMPTS: charName="${charName}"`);
         if (!isMMFlowActive()) {
-            if (char?.name) tickMemoryLifespans(char.name);
+            if (charName) tickMemoryLifespans(charName);
         } else {
-            dmmLog('GENERATE_BEFORE_COMBINE_PROMPTS: skipping tick (MM flow active)', { char: char?.name });
+            dmmLog('GENERATE_BEFORE_COMBINE_PROMPTS: skipping tick (MM flow active)', { charName });
         }
-        onBeforeGenerate(getSettings());
+        onBeforeGenerate(getSettings(), charName);
 
-        if (getSettings().hideOldMessages && char?.name && !isMMFlowActive() && isSummarizing === 0) {
-            hideMessagesUpToRange(char.name);
-            logLayerDiagnostic(char.name);
+        if (getSettings().hideOldMessages && charName && !isMMFlowActive() && isSummarizing === 0) {
+            hideMessagesUpToRange(charName);
+            logLayerDiagnostic(charName);
         }
     });
 

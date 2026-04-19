@@ -187,16 +187,12 @@ function resolveSlot(memory, settings) {
  *
  * @param {object} settings  extension_settings[MODULE_NAME]
  */
-export function onBeforeGenerate(settings) {
+export function onBeforeGenerate(settings, charName) {
     // Clear every slot registered during the last generation.
     _activeKeys.forEach(key => setExtensionPrompt(key, '', extension_prompt_types.IN_PROMPT, 0));
     _activeKeys.clear();
 
-    const ctx  = getContext();
-    const char = ctx.characters[ctx.characterId];
-    if (!char) return;
-
-    const charName = char.name;
+    if (!charName) return;
     const memories = getCharMemories(charName);
     let active     = memories.filter(m => m.active);
     if (!active.length) return;

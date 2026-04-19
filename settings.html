@@ -154,8 +154,12 @@
                     <input id="dmm_debug_logging" type="checkbox" />
                     <label for="dmm_debug_logging">Log DMM events to console</label>
                 </div>
-                <small class="opacity50p">Events are always stored in a 500-entry ring buffer regardless of this setting.</small>
+                <small class="opacity50p">All DMM events (injection, hide, summarization) are always stored in a 500-entry ring buffer. Click Refresh to update the log below, Copy to share it.</small>
+                <textarea id="dmm_log_textarea" class="text_pole textarea_compact" rows="10"
+                    readonly style="font-size:11px;font-family:monospace;resize:vertical"
+                    placeholder="(log entries appear here)"></textarea>
                 <div class="flex-container flexGap5">
+                    <button id="dmm_refresh_log" class="menu_button interactable">Refresh</button>
                     <button id="dmm_copy_log" class="menu_button interactable">Copy Log</button>
                     <button id="dmm_clear_log" class="menu_button interactable">Clear Log</button>
                 </div>
