@@ -110,18 +110,19 @@ export function getSettings() {
 
 /**
  * Returns the name of the character currently being generated for.
- * ctx.characterId is null in group chats, so we read the last chat message
- * instead — ST adds the generating character's (empty) message to ctx.chat
- * before firing GENERATE_BEFORE_COMBINE_PROMPTS.
+ * ctx.characterId IS set by ST before GENERATE_BEFORE_COMBINE_PROMPTS fires,
+ * including in group chats (the null-characterId issue only affects generateRaw
+ * summarization, not normal generation). Falls back to last chat message.
  */
 function getGeneratingCharName() {
     const ctx = getContext();
-    if (ctx.groupId) {
-        const last = ctx.chat?.at(-1);
-        if (last && !last.is_user && !last.is_system) return last.name ?? null;
-        return null;
-    }
-    return ctx.characters[ctx.characterId]?.name ?? null;
+    const byId = ctx.characters[ctx.characterId]?.name;
+    if (byId) return byId;
+    // Fallback: last non-user message. Less reliable in group chats — ST may
+    // add placeholder messages for all responding chars before firing the event.
+    const last = ctx.chat?.at(-1);
+    if (last && !last.is_user && !last.is_system) return last.name ?? null;
+    return null;
 }
 
 function loadSettings() {
@@ -638,8 +639,9 @@ jQuery(async function () {
             clearInjection();
             return;
         }
+        const ctx      = getContext();
         const charName = getGeneratingCharName();
-        dmmDevLog(`GENERATE_BEFORE_COMBINE_PROMPTS: charName="${charName}"`);
+        dmmDevLog(`GENERATE_BEFORE_COMBINE_PROMPTS: charName="${charName}" (characterId=${ctx.characterId}, last_msg="${ctx.chat?.at(-1)?.name}")`);
         if (!isMMFlowActive()) {
             if (charName) tickMemoryLifespans(charName);
         } else {
