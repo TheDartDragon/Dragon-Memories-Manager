@@ -5,7 +5,7 @@ import { Popup, POPUP_TYPE, POPUP_RESULT } from '../../../popup.js';
 import { MODULE_NAME, EXT_NAME, FOLDER_NAME } from './constants.js';
 import './summarizer.js'; // registers DMM.summarize / DMM.buildPrompt on window.DMM
 import { startMMFlow, showManagerPanel, isMMFlowActive } from './ui.js';
-import { rehideGhostMessages, tickMemoryLifespans } from './memory-manager.js';
+import { rehideGhostMessages, tickMemoryLifespans, getCharMemories } from './memory-manager.js';
 import { onBeforeGenerate, clearInjection, logLayerDiagnostic, recoverTempHiddenMessages } from './injector.js';
 import { isSummarizing, DEFAULT_GENERATION_PROMPT } from './summarizer.js';
 import { world_names } from '../../../world-info.js';
