@@ -6,7 +6,7 @@ import { MODULE_NAME, EXT_NAME, FOLDER_NAME } from './constants.js';
 import './summarizer.js'; // registers DMM.summarize / DMM.buildPrompt on window.DMM
 import { startMMFlow, showManagerPanel, isMMFlowActive } from './ui.js';
 import { rehideGhostMessages, tickMemoryLifespans } from './memory-manager.js';
-import { onBeforeGenerate, clearInjection, hideMessagesUpToRange, restoreHiddenMessages, recoverTempHiddenMessages, logLayerDiagnostic } from './injector.js';
+import { onBeforeGenerate, clearInjection, logLayerDiagnostic, recoverTempHiddenMessages } from './injector.js';
 import { isSummarizing, DEFAULT_GENERATION_PROMPT } from './summarizer.js';
 import { world_names } from '../../../world-info.js';
 import { dmmLog, dmmDevLog, setDebugLogging, getLogText, clearLog } from './logger.js';
@@ -110,7 +110,7 @@ export function getSettings() {
 
 /**
  * Returns the name of the character currently being generated for.
- * ctx.characterId IS set by ST before GENERATE_BEFORE_COMBINE_PROMPTS fires,
+ * ctx.characterId IS set by ST before GENERATION_AFTER_COMMANDS fires,
  * including in group chats (the null-characterId issue only affects generateRaw
  * summarization, not normal generation). Falls back to last chat message.
  */
@@ -632,52 +632,80 @@ jQuery(async function () {
     // Migrate legacy ghost messages and rebuild swipes after any chat load/switch.
     eventSource.on(event_types.CHAT_CHANGED, rehideGhostMessages);
 
-    // Inject active memories and tick lifespans just before ST combines the prompt.
-    eventSource.on(event_types.GENERATE_BEFORE_COMBINE_PROMPTS, () => {
+    // Legacy recovery — restore any is_system flags left by an older DMM version
+    // that used the splice approach. No-op if none are found.
+    eventSource.on(event_types.CHAT_CHANGED, () => {
+        const recovered = recoverTempHiddenMessages();
+        if (recovered > 0) {
+            dmmLog(`Legacy recovery: restored ${recovered} messages with stale dmm_temp_hidden flags`);
+            toastr.info(`DMM cleared ${recovered} stale message flag${recovered > 1 ? 's' : ''} from an older version. If the chat looks wrong, press F5.`, 'Dragon Memories Manager');
+        }
+    });
+
+    // Inject active memories and tick lifespans after commands resolve but before
+    // ST builds the prompt. GENERATION_AFTER_COMMANDS fires at the right point for
+    // setExtensionPrompt calls to take effect.
+    eventSource.on(event_types.GENERATION_AFTER_COMMANDS, () => {
         if (isSummarizing > 0) {
-            dmmLog('GENERATE_BEFORE_COMBINE_PROMPTS: skipping (isSummarizing)');
+            dmmLog('GENERATION_AFTER_COMMANDS: skipping (isSummarizing)');
             clearInjection();
             return;
         }
         const ctx      = getContext();
         const charName = getGeneratingCharName();
-        dmmDevLog(`GENERATE_BEFORE_COMBINE_PROMPTS: charName="${charName}" (characterId=${ctx.characterId}, last_msg="${ctx.chat?.at(-1)?.name}")`);
+        dmmDevLog(`GENERATION_AFTER_COMMANDS: charName="${charName}" (characterId=${ctx.characterId}, last_msg="${ctx.chat?.at(-1)?.name}")`);
         if (!isMMFlowActive()) {
             if (charName) tickMemoryLifespans(charName);
         } else {
-            dmmLog('GENERATE_BEFORE_COMBINE_PROMPTS: skipping tick (MM flow active)', { charName });
+            dmmLog('GENERATION_AFTER_COMMANDS: skipping tick (MM flow active)', { charName });
         }
         onBeforeGenerate(getSettings(), charName);
-
-        if (getSettings().hideOldMessages && charName && !isMMFlowActive() && isSummarizing === 0) {
-            hideMessagesUpToRange(charName);
-            logLayerDiagnostic(charName);
-        }
+        if (charName) logLayerDiagnostic(charName);
     });
 
-    // Restore any messages hidden during context assembly, then clear stray injections.
-    eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, (data) => {
-        try {
-            restoreHiddenMessages();
-        } catch (e) {
-            console.error(`[${EXT_NAME}] Failed to restore hidden messages:`, e);
-            toastr.warning('DMM: Could not restore hidden messages. Press F5 if the chat looks wrong.', 'Dragon Memories Manager');
-        }
+    // ── generate_interceptor ─────────────────────────────────────────────────
+    // ST passes an ephemeral copy of the chat array here before prompt assembly.
+    // Mutations to `chat` never touch the real chat — no restore step needed.
 
-        if (isSummarizing > 0) {
-            dmmLog('GENERATE_AFTER_COMBINE_PROMPTS: clearing stray injections (isSummarizing)');
-            clearInjection();
-        }
-    });
+    globalThis.hideMessagesInterceptor = async function (chat) {
+        const charName = getGeneratingCharName();
+        const settings = getSettings();
+        if (!settings?.hideOldMessages || !charName || isMMFlowActive() || isSummarizing > 0) return;
 
-    // Startup recovery — unhide any messages left over from a crashed/interrupted session.
-    eventSource.on(event_types.CHAT_CHANGED, () => {
-        const recovered = recoverTempHiddenMessages();
-        if (recovered > 0) {
-            dmmLog(`Startup recovery: restored ${recovered} temporarily hidden messages`);
-            toastr.info(`DMM restored ${recovered} temporarily hidden message${recovered > 1 ? 's' : ''} from a previous session. If the chat looks wrong, press F5.`, 'Dragon Memories Manager');
+        const memories = getCharMemories(charName).filter(m => m.active);
+        if (!memories.length) return;
+
+        let maxEnd = -1;
+        for (const m of memories) {
+            const end = parseInt((m.message_range || '').split('-').at(-1), 10);
+            if (!isNaN(end) && end > maxEnd) maxEnd = end;
         }
-    });
+        if (maxEnd < 0) return;
+
+        const count = Math.min(maxEnd + 1, chat.length);
+        chat.splice(0, count);
+        dmmDevLog(`Interceptor: ephemerally removed ${count} messages (0–${maxEnd}) for "${charName}"`);
+        dmmLog(`Hide: ephemerally removed ${count} messages (0–${maxEnd}) for "${charName}"`);
+    };
+
+    // ── qvink bridge ─────────────────────────────────────────────────────────
+    // qvink evaluates message exclusion before GENERATION_AFTER_COMMANDS fires,
+    // so it can't see the interceptor's ephemeral changes. This global lets qvink's
+    // check_message_exclusion call us to know which messages DMM would hide.
+
+    globalThis.getHiddenMessageRangeEnd = function () {
+        const settings = getSettings();
+        if (!settings?.hideOldMessages) return -1;
+        const charName = getGeneratingCharName();
+        if (!charName || isMMFlowActive() || isSummarizing > 0) return -1;
+        const memories = getCharMemories(charName).filter(m => m.active);
+        let maxEnd = -1;
+        for (const m of memories) {
+            const end = parseInt((m.message_range || '').split('-').at(-1), 10);
+            if (!isNaN(end) && end > maxEnd) maxEnd = end;
+        }
+        return maxEnd;
+    };
 
     fetch(`scripts/extensions/third-party/${FOLDER_NAME}/manifest.json`)
         .then(r => r.json())

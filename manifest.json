@@ -1,8 +1,9 @@
 {
   "display_name": "Dragon Memories Manager",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "js": "index.js",
   "css": "style.css",
   "author": "DartDragon",
-  "description": "Per-character episodic memory for group RP"
+  "description": "Per-character episodic memory for group RP",
+  "generate_interceptor": "hideMessagesInterceptor"
 }

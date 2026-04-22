@@ -6,150 +6,60 @@ import { MODULE_NAME } from './constants.js';
 import { getCharMemories } from './memory-manager.js';
 import { dmmLog, dmmDevLog } from './logger.js';
 
-// ── Temporary message hiding ──────────────────────────────────────────────────
+// ── Message hiding ────────────────────────────────────────────────────────────
 //
-// Two-step approach required:
-//  1. Set is_system=true — qvink skips is_system messages (include_system_messages:false).
-//     This prevents qvink from treating the hidden messages as visible context.
-//  2. Splice out of ctx.chat — ST's TC context builder does NOT exclude is_system
-//     messages from the prompt; only physical removal works for ST itself.
+// Hiding is handled by the generate_interceptor registered in manifest.json
+// (globalThis.hideMessagesInterceptor, defined in index.js). ST passes an
+// ephemeral copy of the chat array to that function before prompt assembly —
+// mutations there never touch the real chat. No restore step is needed.
 //
-// We save the original is_system value per message (dmm_was_system) so we can
-// restore exactly what was there before, without clobbering real system messages.
-// Messages are held in _hiddenMessages for crash-safe recovery via CHAT_CHANGED.
-
-let _hiddenMessages = null; // { messages: [...] } | null
-
-/**
- * Mark messages 0..maxEnd as is_system=true (for qvink) and splice them out of
- * ctx.chat (for ST context builder). Call restoreHiddenMessages() in
- * AFTER_COMBINE_PROMPTS to undo both steps.
- */
-export function hideMessagesUpToRange(charName) {
-    const ctx      = getContext();
-    const memories = getCharMemories(charName).filter(m => m.active);
-    dmmDevLog(`hideMessagesUpToRange("${charName}"): ${memories.length} active memories`, memories.map(m => ({ range: m.message_range, id: m.id })));
-    if (!memories.length) return;
-
-    let maxEnd = -1;
-    for (const m of memories) {
-        const end = parseInt((m.message_range || '').split('-')[1], 10);
-        if (!isNaN(end) && end > maxEnd) maxEnd = end;
-    }
-    dmmDevLog(`hideMessagesUpToRange: maxEnd=${maxEnd}, chat.length=${ctx.chat.length}`);
-    if (maxEnd < 0) return;
-
-    const count = Math.min(maxEnd + 1, ctx.chat.length);
-
-    // Step 1: mark is_system=true so qvink skips these messages.
-    for (let i = 0; i < count; i++) {
-        const msg = ctx.chat[i];
-        if (!msg || msg.extra?.dmm_temp_hidden) continue;
-        if (!msg.extra) msg.extra = {};
-        msg.extra.dmm_temp_hidden = true;
-        msg.extra.dmm_was_system  = msg.is_system;
-        msg.is_system = true;
-    }
-
-    // Step 2: splice out so ST's context builder never sees them.
-    const messages = ctx.chat.splice(0, count);
-    _hiddenMessages = { messages };
-
-    dmmLog(`Hide: marked+spliced ${count} messages (0–${maxEnd}) for "${charName}"`);
-    dmmDevLog(`Hide: indices 0–${count - 1}`);
-}
+// qvink integration: globalThis.getHiddenMessageRangeEnd (also in index.js)
+// exposes the maxEnd value so qvink's check_message_exclusion can exclude the
+// same messages. qvink evaluates before GENERATION_AFTER_COMMANDS, so the
+// interceptor alone isn't enough for qvink — the globalThis bridge is required.
 
 /**
- * Restore all messages hidden by the current generation pass.
- * Reverses both is_system flag and splice. Safe to call if hide never ran.
- * @returns {number} count of messages restored
- */
-export function restoreHiddenMessages() {
-    if (!_hiddenMessages) return 0;
-    const ctx = getContext();
-    const { messages } = _hiddenMessages;
-
-    for (const msg of messages) {
-        if (msg?.extra?.dmm_temp_hidden) {
-            msg.is_system = msg.extra.dmm_was_system ?? false;
-            delete msg.extra.dmm_temp_hidden;
-            delete msg.extra.dmm_was_system;
-        }
-    }
-
-    ctx.chat.splice(0, 0, ...messages);
-    const count = messages.length;
-    _hiddenMessages = null;
-    dmmLog(`Restore: re-inserted ${count} messages`);
-    return count;
-}
-
-/**
- * Log a three-layer breakdown: DMM-hidden | qvink-summarized | raw.
- * Called after hideMessagesUpToRange — hidden messages are in _hiddenMessages,
- * ctx.chat contains only the remaining (non-hidden) messages.
+ * Log a two-layer breakdown: qvink-summarized | raw.
+ * Called after injection fires. The DMM-hidden layer lives only in the ephemeral
+ * chat copy (interceptor), so it isn't visible here — only qvink vs raw applies.
  */
 export function logLayerDiagnostic(charName) {
     const ctx = getContext();
     if (!ctx?.chat) return;
 
-    const hiddenCount   = _hiddenMessages?.messages.length ?? 0;
-    const offset        = hiddenCount;
-    const allMsgs       = [...(_hiddenMessages?.messages ?? []), ...ctx.chat];
-    const qvinkPresent  = allMsgs.some(m => m?.extra?.qvink_memory !== undefined);
+    const qvinkPresent  = ctx.chat.some(m => m?.extra?.qvink_memory !== undefined);
     const qvinkSettings = window.extension_settings?.['qvink_memory'];
     dmmDevLog(`Layer diagnostic for "${charName}" — qvink: ${qvinkPresent ? 'present' : 'not found'}${qvinkSettings ? `, include_system_messages: ${qvinkSettings.include_system_messages ?? false}` : ''}`);
 
     const qvink = [], raw = [];
     for (let i = 0; i < ctx.chat.length; i++) {
-        const msg     = ctx.chat[i];
-        const realIdx = i + offset;
+        const msg = ctx.chat[i];
         if (msg?.extra?.qvink_memory?.include != null) {
-            qvink.push(realIdx);
+            qvink.push(i);
         } else {
-            raw.push(realIdx);
+            raw.push(i);
         }
     }
 
-    dmmDevLog(`Layers: DMM-hidden=[0–${hiddenCount - 1}] (${hiddenCount}) | qvink-summarized=[${qvink[0] ?? '—'}–${qvink.at(-1) ?? '—'}] (${qvink.length}) | raw=[${raw[0] ?? '—'}–${raw.at(-1) ?? '—'}] (${raw.length})`);
+    dmmDevLog(`Layers: qvink-summarized=[${qvink[0] ?? '—'}–${qvink.at(-1) ?? '—'}] (${qvink.length}) | raw=[${raw[0] ?? '—'}–${raw.at(-1) ?? '—'}] (${raw.length})`);
 }
 
 /**
- * Recovery for CHAT_CHANGED — if _hiddenMessages is set, AFTER_COMBINE_PROMPTS
- * never fired. Re-insert and restore is_system flags.
+ * Startup scan — recover any is_system flags left by an older DMM version that
+ * used the splice approach. Safe no-op if none are found.
  */
 export function recoverTempHiddenMessages() {
-    let recovered = 0;
-
-    if (_hiddenMessages) {
-        const ctx = getContext();
-        if (ctx?.chat) {
-            for (const msg of _hiddenMessages.messages) {
-                if (msg?.extra?.dmm_temp_hidden) {
-                    msg.is_system = msg.extra.dmm_was_system ?? false;
-                    delete msg.extra.dmm_temp_hidden;
-                    delete msg.extra.dmm_was_system;
-                }
-            }
-            ctx.chat.splice(0, 0, ..._hiddenMessages.messages);
-            recovered = _hiddenMessages.messages.length;
-        }
-        _hiddenMessages = null;
-    }
-
-    // Legacy: scan for leftover dmm_temp_hidden flags in current chat
     const ctx = getContext();
-    if (ctx?.chat) {
-        for (const msg of ctx.chat) {
-            if (msg?.extra?.dmm_temp_hidden) {
-                msg.is_system = msg.extra.dmm_was_system ?? false;
-                delete msg.extra.dmm_temp_hidden;
-                delete msg.extra.dmm_was_system;
-                recovered++;
-            }
+    if (!ctx?.chat) return 0;
+    let recovered = 0;
+    for (const msg of ctx.chat) {
+        if (msg?.extra?.dmm_temp_hidden) {
+            msg.is_system = msg.extra.dmm_was_system ?? false;
+            delete msg.extra.dmm_temp_hidden;
+            delete msg.extra.dmm_was_system;
+            recovered++;
         }
     }
-
     return recovered;
 }
 
@@ -172,7 +82,7 @@ const ROLE_MAP = { system: 0, user: 1, assistant: 2 };
 
 // ── Injection slot tracking ───────────────────────────────────────────────────
 // Each unique (type, depth, role) combination gets its own setExtensionPrompt
-// key so memories at different intensities inject at different positions.
+// key so memories at different positions don't clobber each other.
 // All active keys are cleared at the start of every generation.
 
 const _activeKeys = new Set();
@@ -219,6 +129,7 @@ function resolveSlot(memory, settings) {
  * generating character, grouped by their effective injection slot.
  *
  * @param {object} settings  extension_settings[MODULE_NAME]
+ * @param {string|null} charName
  */
 export function onBeforeGenerate(settings, charName) {
     // Clear every slot registered during the last generation.
@@ -230,7 +141,7 @@ export function onBeforeGenerate(settings, charName) {
     let active     = memories.filter(m => m.active);
     if (!active.length) return;
 
-    const template        = settings?.injectionTemplate || '{{summary}}';
+    const template          = settings?.injectionTemplate || '{{summary}}';
     const maxInjectionChars = settings?.maxInjectionChars ?? 0;
 
     // Apply bloat cap — newest memories win, oldest are dropped first.
