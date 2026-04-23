@@ -554,35 +554,43 @@ export async function rehideGhostMessages() {
 
 // ── Lifespan ticking ─────────────────────────────────────────────────────────
 
-// Track chat.length at the last tick per character.
-// Tick is called at CHARACTER_MESSAGE_RENDERED time; chat.length grows by 1 on a
-// new message but stays the same on a swipe/regen of the existing last message.
-// If length hasn't changed since the last tick for this char, it's a swipe — skip.
-const _lastTickedChatLength = {};
+// Track the last USER message index at which we ticked per character.
+// Called in GENERATION_AFTER_COMMANDS (before the AI responds), so the user's
+// message is already in ctx.chat. On a swipe/regen, no new user message was
+// sent — the last user message index is identical to the last tick → skip.
+// In group chats, each character tracks its own pointer independently, so
+// all chars responding to the same user message each tick exactly once.
+const _lastTickedAtUserMsgIdx = {};
 
 /** Reset tick tracker on CHAT_CHANGED so a fresh chat starts clean. */
 export function resetTickTracker() {
-    Object.keys(_lastTickedChatLength).forEach(k => delete _lastTickedChatLength[k]);
+    Object.keys(_lastTickedAtUserMsgIdx).forEach(k => delete _lastTickedAtUserMsgIdx[k]);
 }
 
 /**
  * Increment char_message_count for every active memory belonging to
  * generatingCharName, and mark any that have reached their lifespan as inactive.
- * Must be called at CHARACTER_MESSAGE_RENDERED time so ctx.chat.length reflects
- * the committed message (new message vs swipe can then be distinguished).
+ * Must be called in GENERATION_AFTER_COMMANDS so the swipe guard can compare
+ * the current last-user-message index against the stored one.
  *
  * @param {string} generatingCharName
  */
 export function tickMemoryLifespans(generatingCharName) {
-    const ctx        = getContext();
-    const currentLen = ctx.chat.length;
-    const lastLen    = _lastTickedChatLength[generatingCharName];
+    const ctx = getContext();
 
-    dmmDevLog(`tickMemoryLifespans("${generatingCharName}"): chat.length=${currentLen}, lastTicked=${lastLen ?? 'never'}, lastMsg="${ctx.chat?.at(-1)?.name}"`);
+    // Find the index of the most recent user message in ctx.chat.
+    let lastUserMsgIdx = -1;
+    for (let i = ctx.chat.length - 1; i >= 0; i--) {
+        if (ctx.chat[i]?.is_user) { lastUserMsgIdx = i; break; }
+    }
 
-    // Same length as last tick → this is a swipe, not a new message.
-    if (lastLen !== undefined && lastLen === currentLen) {
-        dmmLog(`Tick skipped: swipe for "${generatingCharName}" (chat.length ${currentLen} unchanged since last tick)`);
+    const lastTickedIdx = _lastTickedAtUserMsgIdx[generatingCharName] ?? -1;
+
+    dmmDevLog(`tickMemoryLifespans("${generatingCharName}"): lastUserMsg=#${lastUserMsgIdx}, lastTickedAt=#${lastTickedIdx}, chat.length=${ctx.chat.length}`);
+
+    // Same (or older) user message → swipe/regen, not a new turn.
+    if (lastUserMsgIdx <= lastTickedIdx) {
+        dmmLog(`Tick skipped: swipe/regen for "${generatingCharName}" (last user msg #${lastUserMsgIdx} ≤ last ticked #${lastTickedIdx})`);
         return;
     }
 
@@ -602,8 +610,8 @@ export function tickMemoryLifespans(generatingCharName) {
         }
     });
 
-    _lastTickedChatLength[generatingCharName] = currentLen;
-    dmmDevLog(`tickMemoryLifespans("${generatingCharName}"): recorded lastTicked=${currentLen}`);
+    _lastTickedAtUserMsgIdx[generatingCharName] = lastUserMsgIdx;
+    dmmDevLog(`tickMemoryLifespans("${generatingCharName}"): recorded lastTickedAt=#${lastUserMsgIdx}`);
     if (changed) saveMemories();
 }
 
