@@ -14,7 +14,7 @@
 
 import { getContext } from '../../../extensions.js';
 import { EXT_NAME } from './constants.js';
-import { dmmLog } from './logger.js';
+import { dmmLog, dmmDevLog } from './logger.js';
 
 // ── Storage helpers ──────────────────────────────────────────────────────────
 
@@ -576,10 +576,13 @@ export function resetTickTracker() {
 export function tickMemoryLifespans(generatingCharName) {
     const ctx        = getContext();
     const currentLen = ctx.chat.length;
+    const lastLen    = _lastTickedChatLength[generatingCharName];
+
+    dmmDevLog(`tickMemoryLifespans("${generatingCharName}"): chat.length=${currentLen}, lastTicked=${lastLen ?? 'never'}, lastMsg="${ctx.chat?.at(-1)?.name}"`);
 
     // Same length as last tick → this is a swipe, not a new message.
-    if (_lastTickedChatLength[generatingCharName] === currentLen) {
-        dmmLog(`Tick skipped: swipe for "${generatingCharName}" (chat length ${currentLen})`);
+    if (lastLen !== undefined && lastLen === currentLen) {
+        dmmLog(`Tick skipped: swipe for "${generatingCharName}" (chat.length ${currentLen} unchanged since last tick)`);
         return;
     }
 
@@ -600,6 +603,7 @@ export function tickMemoryLifespans(generatingCharName) {
     });
 
     _lastTickedChatLength[generatingCharName] = currentLen;
+    dmmDevLog(`tickMemoryLifespans("${generatingCharName}"): recorded lastTicked=${currentLen}`);
     if (changed) saveMemories();
 }
 

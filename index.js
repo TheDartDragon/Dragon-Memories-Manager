@@ -638,8 +638,10 @@ jQuery(async function () {
     // Tick lifespans after the message is committed to chat so swipes can be
     // distinguished from new messages by comparing ctx.chat.length.
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, () => {
-        if (isMMFlowActive() || isSummarizing > 0) return;
+        const ctx      = getContext();
         const charName = getGeneratingCharName();
+        dmmDevLog(`CHARACTER_MESSAGE_RENDERED: charName="${charName}", characterId=${ctx.characterId}, chat.length=${ctx.chat?.length}, mmFlow=${isMMFlowActive()}, summarizing=${isSummarizing}`);
+        if (isMMFlowActive() || isSummarizing > 0) return;
         if (!charName) return;
         tickMemoryLifespans(charName);
     });
@@ -665,7 +667,7 @@ jQuery(async function () {
         }
         const ctx      = getContext();
         const charName = getGeneratingCharName();
-        dmmDevLog(`GENERATION_AFTER_COMMANDS: charName="${charName}" (characterId=${ctx.characterId}, last_msg="${ctx.chat?.at(-1)?.name}")`);
+        dmmDevLog(`GENERATION_AFTER_COMMANDS: charName="${charName}", characterId=${ctx.characterId}, chat.length=${ctx.chat?.length}, last_msg="${ctx.chat?.at(-1)?.name}"`);
         onBeforeGenerate(getSettings(), charName);
         if (charName) logLayerDiagnostic(charName);
     });
