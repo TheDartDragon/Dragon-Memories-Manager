@@ -554,13 +554,35 @@ export async function rehideGhostMessages() {
 
 // ── Lifespan ticking ─────────────────────────────────────────────────────────
 
+// Track chat.length at the last tick per character.
+// Tick is called at CHARACTER_MESSAGE_RENDERED time; chat.length grows by 1 on a
+// new message but stays the same on a swipe/regen of the existing last message.
+// If length hasn't changed since the last tick for this char, it's a swipe — skip.
+const _lastTickedChatLength = {};
+
+/** Reset tick tracker on CHAT_CHANGED so a fresh chat starts clean. */
+export function resetTickTracker() {
+    Object.keys(_lastTickedChatLength).forEach(k => delete _lastTickedChatLength[k]);
+}
+
 /**
  * Increment char_message_count for every active memory belonging to
  * generatingCharName, and mark any that have reached their lifespan as inactive.
+ * Must be called at CHARACTER_MESSAGE_RENDERED time so ctx.chat.length reflects
+ * the committed message (new message vs swipe can then be distinguished).
  *
  * @param {string} generatingCharName
  */
 export function tickMemoryLifespans(generatingCharName) {
+    const ctx        = getContext();
+    const currentLen = ctx.chat.length;
+
+    // Same length as last tick → this is a swipe, not a new message.
+    if (_lastTickedChatLength[generatingCharName] === currentLen) {
+        dmmLog(`Tick skipped: swipe for "${generatingCharName}" (chat length ${currentLen})`);
+        return;
+    }
+
     const memories = getCharMemories(generatingCharName);
     let changed = false;
 
@@ -577,6 +599,7 @@ export function tickMemoryLifespans(generatingCharName) {
         }
     });
 
+    _lastTickedChatLength[generatingCharName] = currentLen;
     if (changed) saveMemories();
 }
 

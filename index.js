@@ -5,7 +5,7 @@ import { Popup, POPUP_TYPE, POPUP_RESULT } from '../../../popup.js';
 import { MODULE_NAME, EXT_NAME, FOLDER_NAME } from './constants.js';
 import './summarizer.js'; // registers DMM.summarize / DMM.buildPrompt on window.DMM
 import { startMMFlow, showManagerPanel, isMMFlowActive } from './ui.js';
-import { rehideGhostMessages, tickMemoryLifespans, getCharMemories } from './memory-manager.js';
+import { rehideGhostMessages, tickMemoryLifespans, resetTickTracker, getCharMemories } from './memory-manager.js';
 import { onBeforeGenerate, clearInjection, logLayerDiagnostic, recoverTempHiddenMessages } from './injector.js';
 import { isSummarizing, DEFAULT_GENERATION_PROMPT } from './summarizer.js';
 import { world_names } from '../../../world-info.js';
@@ -632,6 +632,18 @@ jQuery(async function () {
     // Migrate legacy ghost messages and rebuild swipes after any chat load/switch.
     eventSource.on(event_types.CHAT_CHANGED, rehideGhostMessages);
 
+    // Reset swipe-guard tracker when the chat changes so a fresh chat starts clean.
+    eventSource.on(event_types.CHAT_CHANGED, resetTickTracker);
+
+    // Tick lifespans after the message is committed to chat so swipes can be
+    // distinguished from new messages by comparing ctx.chat.length.
+    eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, () => {
+        if (isMMFlowActive() || isSummarizing > 0) return;
+        const charName = getGeneratingCharName();
+        if (!charName) return;
+        tickMemoryLifespans(charName);
+    });
+
     // Legacy recovery — restore any is_system flags left by an older DMM version
     // that used the splice approach. No-op if none are found.
     eventSource.on(event_types.CHAT_CHANGED, () => {
@@ -654,11 +666,6 @@ jQuery(async function () {
         const ctx      = getContext();
         const charName = getGeneratingCharName();
         dmmDevLog(`GENERATION_AFTER_COMMANDS: charName="${charName}" (characterId=${ctx.characterId}, last_msg="${ctx.chat?.at(-1)?.name}")`);
-        if (!isMMFlowActive()) {
-            if (charName) tickMemoryLifespans(charName);
-        } else {
-            dmmLog('GENERATION_AFTER_COMMANDS: skipping tick (MM flow active)', { charName });
-        }
         onBeforeGenerate(getSettings(), charName);
         if (charName) logLayerDiagnostic(charName);
     });

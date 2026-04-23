@@ -862,9 +862,12 @@ export async function showManagerPanel() {
     const $list = $('<div class="dmm-manager-list flex-container flexFlowColumn flexGap8">');
     $panel.append($list);
 
-    // Create New Memory button
+    // Action buttons row
+    const $btnRow    = $('<div class="flex-container flexGap8 flexWrap">');
     const $createBtn = $('<button class="menu_button interactable dmm-create-new-btn" title="Start the memory creation flow: choose a character, select a message range, and generate a new memory summary">+ Create New Memory</button>');
-    $panel.append($createBtn);
+    const $blankBtn  = $('<button class="menu_button interactable" title="Add a blank memory entry for manual editing. Good for static info like attire, relationships, wounds — anything you want the LLM to always know.">+ Add Blank</button>');
+    $btnRow.append($createBtn, $blankBtn);
+    $panel.append($btnRow);
 
     // ── Render list ──────────────────────────────────────────────────────────
     function renderList(charName) {
@@ -896,6 +899,43 @@ export async function showManagerPanel() {
     $createBtn.on('click', () => {
         popupRef?.complete(POPUP_RESULT.CANCELLED);
         setTimeout(() => startMMFlow(), 150);
+    });
+
+    $blankBtn.on('click', async () => {
+        const charName = $charSelect.val();
+        if (!charName) return;
+
+        const ctx      = getContext();
+        const settings = getSettings();
+        const entry = {
+            id:                 uuidv4(),
+            summary:            '',
+            token_count:        0,
+            created_at_message: Math.max(0, ctx.chat.length - 1),
+            message_range:      '',
+            lifespan:           settings?.defaultLifespan ?? 20,
+            char_message_count: 0,
+            active:             true,
+            format_template:    'manual',
+            injectionPosition:  null,
+            injectionDepth:     null,
+            injectionRole:      null,
+        };
+
+        const text = await Popup.show.input(
+            `New Memory — ${charName}`,
+            'Enter content (attire, relationships, wounds, any static fact):',
+            '',
+            { rows: 10, wide: true },
+        );
+
+        if (text === null) return;  // cancelled
+
+        entry.summary     = text.trim();
+        entry.token_count = getTokenCount(entry.summary);
+        addMemoryEntry(charName, entry);
+        renderList(charName);
+        dmmLog(`Blank memory added manually for "${charName}"`);
     });
 
     popupRef = new Popup($panel, POPUP_TYPE.DISPLAY, '', {
