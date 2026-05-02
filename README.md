@@ -186,7 +186,7 @@ Found in the **Extensions** tab under **Dragon Memories Manager**.
 |---|---|
 | **Connection profile** | Switch to a dedicated connection profile before generating a summary, then restore. Requires Connection Manager. Leave empty to use the current profile. |
 | **Completion preset** | Switch to a dedicated completion preset (sampler settings) for summarization, then restore. Auto-fills from the selected connection profile's stored preset. |
-| **Scribe prompt** | The prompt sent to the LLM to produce the memory. `{{char}}` and `{{transcript}}` are replaced at generation time. |
+| **Scribe prompt** | The prompt sent to the LLM to produce the memory. `{{char}}` and `{{transcript}}` are replaced at generation time. `{{memories}}` is replaced with the character's active memory summaries (empty if none exist). |
 | **Include lorebook context** | Runs ST's keyword matching against the transcript and feeds matched entries to the scribe as background context. |
 | **Exclude lorebooks** | Tag-based blocklist — lorebooks added here are filtered out from the scribe's context even when inclusion is enabled. |
 | **Strip reasoning blocks** | Removes `prefix…suffix` blocks using ST's configured reasoning tags (AI Response Formatting → Reasoning prefix/suffix). Applied at save time. |
