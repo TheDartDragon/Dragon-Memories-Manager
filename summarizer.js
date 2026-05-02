@@ -11,7 +11,7 @@ import { power_user } from '../../../../scripts/power-user.js';
 import { getContext } from '../../../extensions.js';
 import { checkWorldInfo, world_info_include_names } from '../../../world-info.js';
 import { EXT_NAME } from './constants.js';
-import { collectAndFilter } from './memory-manager.js';
+import { collectAndFilter, getCharMemories } from './memory-manager.js';
 import { dmmLog, dmmDevLog } from './logger.js';
 
 // ── Default generation prompt ────────────────────────────────────────────────
@@ -52,18 +52,23 @@ function formatMessage(msg) {
 
 /**
  * Build the full summarization prompt for a character.
- * The promptTemplate should contain {{char}} and {{transcript}} placeholders.
+ * The promptTemplate should contain {{char}}, {{transcript}}, and/or {{memories}} placeholders.
  *
  * @param {string}   charName
  * @param {object[]} messages        already presence-filtered
  * @param {string}   [promptTemplate] defaults to DEFAULT_GENERATION_PROMPT
+ * @param {object[]} [activeMemories] active memory entries (each needs .summary)
  * @returns {string}
  */
-function buildPrompt(charName, messages, promptTemplate = DEFAULT_GENERATION_PROMPT) {
+function buildPrompt(charName, messages, promptTemplate = DEFAULT_GENERATION_PROMPT, activeMemories = []) {
     const transcript = messages.map(formatMessage).join('\n\n');
+    const memoriesBlock = activeMemories
+        .map(m => m.summary)
+        .join('\n\n');
     return promptTemplate
         .replace(/\{\{char\}\}/g, charName)
-        .replace(/\{\{transcript\}\}/g, transcript);
+        .replace(/\{\{transcript\}\}/g, transcript)
+        .replace(/\{\{memories\}\}/g, memoriesBlock);
 }
 
 // ── Lorebook context ─────────────────────────────────────────────────────────
@@ -244,7 +249,8 @@ export async function generateMemorySummary(charName, filteredMessages, settings
     }
 
     const promptTemplate   = settings?.generationPrompt || DEFAULT_GENERATION_PROMPT;
-    const prompt           = buildPrompt(charName, filteredMessages, promptTemplate);
+    const activeMemories   = getCharMemories(charName).filter(m => m.active);
+    const prompt           = buildPrompt(charName, filteredMessages, promptTemplate, activeMemories);
     const summaryProfile   = settings?.summaryConnectionProfile || '';
     const summaryPreset    = settings?.summaryCompletionPreset || '';
     const includeLorebooks  = settings?.includeLorebooksDuringSum ?? false;
