@@ -139,35 +139,26 @@ function isPresenceActive() {
 async function showCharSelector() {
     const ctx = getContext();
 
-    // Non-group chat, or group chat without Presence data: auto-select
-    if (!ctx.groupId || !isPresenceActive()) {
-        let char = null;
-        if (ctx.groupId) {
-            // Group chat but no Presence — pick the last non-user, non-ghost AI message's char
-            const group  = ctx.groups.find(g => g.id === ctx.groupId);
-            const lastAI = [...ctx.chat].reverse().find(m => !m.is_user && !m.extra?.scene_memory_ghost && m.name);
-            const name   = lastAI?.name;
-            char = (group?.members ?? [])
-                .map(av => ctx.characters.find(c => c.avatar === av))
-                .find(c => c?.name === name)
-                ?? ctx.characters.find(c =>
-                    (group?.members ?? []).includes(c.avatar));
-            if (char) toastr.info(`Presence not detected — creating memory for ${char.name}.`, EXT_NAME);
-        } else {
-            char = ctx.characters[ctx.characterId];
-        }
+    // Single-character chat: nothing to choose, auto-select.
+    if (!ctx.groupId) {
+        const char = ctx.characters[ctx.characterId];
         if (!char) {
             toastr.error('No active character found.', EXT_NAME);
             resetState();
             return;
         }
         state.charName = char.name;
-        dmmLog('Char auto-selected (no group or no Presence data)', { char: char.name, isGroup: !!ctx.groupId });
+        dmmLog('Char auto-selected (single-char chat)', { char: char.name });
         await showRangeSelector();
         return;
     }
 
-    // Group chat with Presence: show avatar selector
+    // Group chat: always show avatar selector.
+    // Presence data is used for filtering the transcript, not for char selection.
+    if (!isPresenceActive()) {
+        toastr.info('Presence extension not detected — presence filtering will be skipped.', EXT_NAME);
+    }
+
     const group = ctx.groups.find(g => g.id === ctx.groupId);
     const chars = (group?.members ?? [])
         .map(av => ctx.characters.find(c => c.avatar === av))
@@ -1285,6 +1276,53 @@ function buildMemoryCard(charName, entry, onRefresh) {
         } else {
             toastr.error('Reassign failed — entry not found.', EXT_NAME);
         }
+    });
+
+    // Edit message range
+    const $editRangeBtn = $('<button class="menu_button interactable" title="Change which messages this memory covers. Useful when manually adding summaries or correcting the range.">Edit Range</button>');
+    $actions.append($editRangeBtn);
+
+    const $editRangeSection = $('<div class="flex-container flexGap5 alignItemsCenter flexWrap dmm-intensity-override" style="display:none;margin-top:4px">');
+    const [currentStart, currentEnd] = (entry.message_range || '0-0').split('-').map(s => parseInt(s, 10) || 0);
+    const $startInput = $(`<input type="number" class="text_pole" style="width:70px" min="0" title="Start message index" value="${currentStart}">`);
+    const $endInput   = $(`<input type="number" class="text_pole" style="width:70px" min="0" title="End message index" value="${currentEnd}">`);
+    const $rangeConfirmBtn = $('<button class="menu_button interactable">Save</button>');
+    const $rangeCancelBtn  = $('<button class="menu_button interactable">Cancel</button>');
+    $editRangeSection.append(
+        '<span class="opacity50p" style="white-space:nowrap">Range:</span>',
+        $startInput,
+        '<span class="opacity50p">–</span>',
+        $endInput,
+        $rangeConfirmBtn,
+        $rangeCancelBtn,
+    );
+    $card.append($editRangeSection);
+
+    $editRangeBtn.on('click', () => {
+        if ($editRangeSection.is(':visible')) { $editRangeSection.hide(); return; }
+        $reassignSection.hide();
+        $editRangeSection.show();
+        $startInput.focus();
+    });
+
+    $rangeCancelBtn.on('click', () => $editRangeSection.hide());
+
+    $rangeConfirmBtn.on('click', () => {
+        const newStart = parseInt($startInput.val(), 10);
+        const newEnd   = parseInt($endInput.val(), 10);
+        if (isNaN(newStart) || isNaN(newEnd)) {
+            toastr.warning('Enter valid numbers for both indices.', EXT_NAME);
+            return;
+        }
+        if (newStart > newEnd) {
+            toastr.warning('Start index cannot be greater than end index.', EXT_NAME);
+            return;
+        }
+        entry.message_range = `${newStart}-${newEnd}`;
+        saveMemories();
+        toastr.success(`Range updated to ${newStart}–${newEnd}.`, EXT_NAME);
+        $editRangeSection.hide();
+        onRefresh();
     });
 
     // Delete
