@@ -668,6 +668,19 @@ jQuery(async function () {
     // ST passes an ephemeral copy of the chat array here before prompt assembly.
     // Mutations to `chat` never touch the real chat — no restore step needed.
 
+    // Counts messages in the real chat (0..maxEnd) that are already absent from the
+    // ephemeral array because ST strips is_system / is_hidden messages before passing.
+    globalThis.getHiddenMessageCount = function (maxEnd) {
+        const ctx = getContext();
+        if (!ctx.chat || !Array.isArray(ctx.chat)) return 0;
+        let hiddenCount = 0;
+        const limit = Math.min(maxEnd + 1, ctx.chat.length);
+        for (let i = 0; i < limit; i++) {
+            if (ctx.chat[i].is_system || ctx.chat[i].is_hidden) hiddenCount++;
+        }
+        return hiddenCount;
+    };
+
     globalThis.hideMessagesInterceptor = async function (chat) {
         const charName = getGeneratingCharName();
         const settings = getSettings();
@@ -683,10 +696,17 @@ jQuery(async function () {
         }
         if (maxEnd < 0) return;
 
-        const count = Math.min(maxEnd + 1, chat.length);
-        chat.splice(0, count);
-        dmmDevLog(`Interceptor: ephemerally removed ${count} messages (0–${maxEnd}) for "${charName}"`);
-        dmmLog(`Hide: ephemerally removed ${count} messages (0–${maxEnd}) for "${charName}"`);
+        // Subtract messages already absent from the ephemeral array (manually hidden /
+        // system messages) so we don't over-splice into visible messages.
+        const hiddenCount = globalThis.getHiddenMessageCount(maxEnd);
+        const originalCount = Math.min(maxEnd + 1, getContext().chat.length);
+        const finalCount = Math.min(Math.max(0, originalCount - hiddenCount), chat.length);
+
+        if (finalCount > 0) {
+            chat.splice(0, finalCount);
+            dmmDevLog(`Interceptor: ephemerally removed ${finalCount} messages (0–${maxEnd}, minus ${hiddenCount} already hidden) for "${charName}"`);
+            dmmLog(`Hide: ephemerally removed ${finalCount} messages (0–${maxEnd}, minus ${hiddenCount} already hidden) for "${charName}"`);
+        }
     };
 
     // ── qvink bridge ─────────────────────────────────────────────────────────
