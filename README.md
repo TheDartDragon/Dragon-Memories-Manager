@@ -104,6 +104,8 @@ The extension generates and saves a full-history memory for every character in t
 
 ### Management
 - **Memory Manager panel** — view, edit, reactivate, reassign, or export all memories for any character in the current chat.
+- **Blank memory** — create an empty memory entry for manual editing; useful for tracking attire, wounds, relationships, or other persistent state that doesn't come from a generated summary.
+- **Edit Range** — change the message range of any existing memory entry directly from the Manager panel.
 - **Token count** — each saved memory records its token count at save time and displays it in the Manager panel.
 - **Staleness warning** — memory cards show a badge when the summarized message range has been deleted or rolled back.
 - **Lorebook export** — export any memory to a World Info lorebook with character filter and injection position preserved.
@@ -142,11 +144,13 @@ The Presence extension stores a `present` array on each message — an array of 
 
 ### Injection
 
-On every `GENERATE_BEFORE_COMBINE_PROMPTS` event, all active memories for the currently generating character are grouped by their effective injection slot and injected using `setExtensionPrompt`. Injection is skipped entirely during the summarization pass so memories do not contaminate the scribe prompt.
+On every `GENERATION_AFTER_COMMANDS` event, all active memories for the currently generating character are grouped by their effective injection slot and injected using `setExtensionPrompt`. Injection is skipped entirely during the summarization pass so memories do not contaminate the scribe prompt.
+
+When **Hide summarized messages** is enabled, DMM registers a `generate_interceptor` (declared in `manifest.json`). SillyTavern passes an **ephemeral copy** of the chat array to this function before prompt assembly — DMM splices out the messages already covered by active memories. The real chat is never touched; no restore step is needed. Manually hidden or system messages are accounted for so the splice count stays accurate even when those messages are absent from the ephemeral array.
 
 ### Lifespan ticking
 
-After injection, the generating character's active memories are ticked: `char_message_count` is incremented for each active entry. When `char_message_count >= lifespan`, the entry is marked inactive. Ticking is suppressed while the MM creation flow is running to avoid counting the MM's own generation turn.
+After injection, the generating character's active memories are ticked: `char_message_count` is incremented for each active entry. When `char_message_count >= lifespan`, the entry is marked inactive. Ticking is suppressed on swipes and regenerations (detected by tracking whether a new user message has appeared since the last tick) and while the MM creation flow is running.
 
 ### Range modes
 
@@ -168,7 +172,7 @@ Found in the **Extensions** tab under **Dragon Memories Manager**.
 |---|---|
 | **Default Lifespan** | How many of the character's own generated messages a new memory lives for. Default: 20. |
 | **Injection cap** | Maximum total characters injected per character per generation. 0 = unlimited. Oldest memories are dropped first when over the cap. |
-| **Hide summarized messages** | During generation, hides raw messages already covered by active memories so the LLM only sees the summary. Restored immediately after prompt assembly. See [qvink Integration](#qvink-integration). |
+| **Hide summarized messages** | During generation, ephemerally removes raw messages already covered by active memories from the prompt so the LLM only sees the summary. Uses ST's `generate_interceptor` — the real chat is never modified. See [qvink Integration](#qvink-integration). |
 
 **Context Injection**
 
@@ -232,6 +236,7 @@ Each card shows: active/inactive status, message range, creation message index, 
 | **Intensity dropdown** | Per-memory injection position override. See [Memory Intensity](#memory-intensity). |
 | **Deactivate / Reactivate** | Toggle whether the memory is injected. Reactivating resets the countdown. |
 | **Edit** | Open a full-text editor for the memory summary. |
+| **Edit Range** | Change the start and end message indices for this memory entry. |
 | **Export → Lorebook** | Export to a World Info lorebook. See [Lorebook Export](#lorebook-export). |
 | **Reassign to…** | Move this memory to a different character. Useful if it was created under the wrong name. |
 | **✕ Delete** | Permanently delete this single memory entry. |
@@ -239,6 +244,10 @@ Each card shows: active/inactive status, message range, creation message index, 
 ### + Create New Memory
 
 Closes the panel and starts the MM creation flow.
+
+### + Blank Memory
+
+Creates an empty memory entry and opens the text editor immediately. Useful for manually tracking things that don't come from a generated summary — attire, wounds, relationships, persistent world state. The entry is discarded if you close the editor without saving.
 
 ---
 
@@ -321,7 +330,7 @@ DMM works cleanly alongside [qvink MessageSummarize](https://github.com/qvink/Si
 [ Raw recent messages    ]  ← last few messages unsummarized
 ```
 
-**How it works:** Enable **Hide summarized messages** in DMM. On each generation, DMM sets `is_system=true` on messages already covered by active memories. qvink skips system messages by default (`include_system_messages: false`), so it naturally picks up only from where DMM left off. No configuration coordination required — the layers compose automatically.
+**How it works:** Enable **Hide summarized messages** in DMM. On each generation, DMM's `generate_interceptor` ephemerally removes messages already covered by active memories from the prompt copy before assembly. qvink evaluates earlier in the pipeline and uses a small bridge (`globalThis.getHiddenMessageRangeEnd`) that DMM exposes — qvink reads it to know which messages DMM is covering and skips them automatically. No manual coordination required — the layers compose automatically.
 
 **Result:** The LLM sees a continuous timeline of decreasing detail — structured long-term memories, medium-term rolling summaries, and full recent messages — with no double-coverage or redundancy.
 
