@@ -65,10 +65,12 @@ function buildPrompt(charName, messages, promptTemplate = DEFAULT_GENERATION_PRO
     const memoriesBlock = activeMemories
         .map(m => m.summary)
         .join('\n\n');
+    // Function replacers so `$` sequences in chat/memory text aren't
+    // interpreted as replacement patterns ($&, $', etc.)
     return promptTemplate
-        .replace(/\{\{char\}\}/g, charName)
-        .replace(/\{\{transcript\}\}/g, transcript)
-        .replace(/\{\{memories\}\}/g, memoriesBlock);
+        .replace(/\{\{char\}\}/g, () => charName)
+        .replace(/\{\{transcript\}\}/g, () => transcript)
+        .replace(/\{\{memories\}\}/g, () => memoriesBlock);
 }
 
 // ── Lorebook context ─────────────────────────────────────────────────────────

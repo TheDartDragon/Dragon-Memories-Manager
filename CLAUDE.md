@@ -10,7 +10,7 @@
 Primary use case: **multi-character group RP** where characters have isolated knowledge — they only remember events they personally witnessed.
 
 - **Repo:** https://github.com/TheDartDragon/Dragon-Memories-Manager
-- **Current version:** 0.2.6
+- **Current version:** 0.2.7
 - **Status:** Feature-complete for v1 scope. Ongoing: QOL, tester-reported bug fixes.
 
 ---
@@ -51,7 +51,7 @@ Dragon-Memories-Manager/          ← repo root, also the ST extension folder
 ```json
 {
   "display_name": "Dragon Memories Manager",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "js": "index.js",
   "css": "style.css",
   "author": "DartDragon",
